@@ -1,0 +1,26 @@
+# MoveIt2 그룹 <-> ros2_control 컨트롤러 매핑.
+# arm_controller / gripper_controller 는
+# army_manipulator_bringup/config/ros2_controllers.yaml 에서 스폰된다.
+moveit_simple_controller_manager:
+  controller_names:
+    - arm_controller
+    - gripper_controller
+
+  arm_controller:
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - base_rotate_joint
+      - shoulder_lift_joint
+      - elbow_joint
+      - wrist_joint
+
+  gripper_controller:
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - gripper_joint
+
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager

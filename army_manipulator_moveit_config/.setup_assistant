@@ -1,0 +1,11 @@
+moveit_setup_assistant_config:
+  URDF:
+    package: army_manipulator_description
+    relative_path: urdf/army_manipulator.urdf.xacro
+    xacro_args: use_mock_hardware:=true
+  SRDF:
+    relative_path: config/army_manipulator.srdf
+  CONFIG:
+    author_name: suhui
+    author_email: suhui12334@gmail.com
+    generated_timestamp: 1783958400

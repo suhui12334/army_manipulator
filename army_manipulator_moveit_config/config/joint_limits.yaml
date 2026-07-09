@@ -1,0 +1,32 @@
+# 각 조인트의 velocity/acceleration 한계값.
+# velocity 는 URDF <limit> 과 동일. acceleration 은 실측 전 임시값이므로
+# RMD/Dynamixel 모터 튜닝 후 조정할 것.
+default_velocity_scaling_factor: 0.1
+default_acceleration_scaling_factor: 0.1
+
+joint_limits:
+  base_rotate_joint:
+    has_velocity_limits: true
+    max_velocity: 2.618
+    has_acceleration_limits: true
+    max_acceleration: 2.618
+  shoulder_lift_joint:
+    has_velocity_limits: true
+    max_velocity: 1.047
+    has_acceleration_limits: true
+    max_acceleration: 1.047
+  elbow_joint:
+    has_velocity_limits: true
+    max_velocity: 1.571
+    has_acceleration_limits: true
+    max_acceleration: 1.571
+  wrist_joint:
+    has_velocity_limits: true
+    max_velocity: 2.618
+    has_acceleration_limits: true
+    max_acceleration: 2.618
+  gripper_joint:
+    has_velocity_limits: true
+    max_velocity: 3.665
+    has_acceleration_limits: true
+    max_acceleration: 3.665

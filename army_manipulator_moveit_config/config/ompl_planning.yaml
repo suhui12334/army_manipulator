@@ -1,0 +1,25 @@
+# ROS2 Humble 세대 OMPL planning pipeline 기본 설정 (Setup Assistant 기본값과 동일 형식)
+planning_plugin: ompl_interface/OMPLPlanner
+request_adapters: >-
+    default_planner_request_adapters/AddTimeOptimalParameterization
+    default_planner_request_adapters/ResolveConstraintFrames
+    default_planner_request_adapters/FixWorkspaceBounds
+    default_planner_request_adapters/FixStartStateBounds
+    default_planner_request_adapters/FixStartStateCollision
+    default_planner_request_adapters/FixStartStatePathConstraints
+start_state_max_bounds_error: 0.1
+
+arm:
+  planner_configs:
+    - RRTConnectkConfigDefault
+  projection_evaluator: joints(shoulder_lift_joint,elbow_joint)
+  longest_valid_segment_fraction: 0.005
+
+gripper:
+  planner_configs:
+    - RRTConnectkConfigDefault
+
+planner_configs:
+  RRTConnectkConfigDefault:
+    type: geometric::RRTConnect
+    range: 0.0

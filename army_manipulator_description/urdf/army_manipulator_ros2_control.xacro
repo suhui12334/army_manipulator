@@ -1,0 +1,147 @@
+<?xml version="1.0"?>
+<!--
+  ros2_control 하드웨어 인터페이스 정의
+  ============================================================
+  use_mock_hardware=true  (기본값, 하드웨어 인터페이스 검증 전)
+    -> mock_components/GenericSystem 로 5축 전부를 하나의 system 으로 노출.
+       RViz + MoveIt2 플래닝 파이프라인 검증용.
+
+  use_mock_hardware=false (팀원 Hardware Interface 완성 후)
+    -> 버스별로 분리된 실제 플러그인을 사용:
+       - base_rotate_joint  : dynamixel_hardware/DynamixelHardware   (RS-485, XH540-W270-T)
+       - gripper_joint      : dynamixel_hardware/DynamixelHardware   (TTL,   MX-106T)
+       - shoulder/elbow/wrist : myactuator_rmd_hardware/MyActuatorRmdHardwareInterface (CAN, RMD-X8/X6/X4)
+
+       plugin 이름/파라미터는 각각
+       https://github.com/dynamixel-community/dynamixel_hardware ,
+       https://github.com/2b-t/myactuator_rmd_ros (myactuator_rmd_hardware) 기준.
+       usb_port / ifname / actuator_id 는 실장비 배선 확정 후 팀원과 맞춰서 수정할 것.
+  ============================================================
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="army_manipulator_ros2_control" params="prefix use_mock_hardware">
+
+    <xacro:if value="${use_mock_hardware}">
+
+      <ros2_control name="${prefix}army_manipulator_system" type="system">
+        <hardware>
+          <plugin>mock_components/GenericSystem</plugin>
+        </hardware>
+        <joint name="${prefix}base_rotate_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}shoulder_lift_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}elbow_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}wrist_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}gripper_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+      </ros2_control>
+
+    </xacro:if>
+
+    <xacro:unless value="${use_mock_hardware}">
+
+      <!-- ===== base_rotate_joint : Dynamixel XH540-W270-T (RS-485) ===== -->
+      <ros2_control name="${prefix}base_bus" type="system">
+        <hardware>
+          <plugin>dynamixel_hardware/DynamixelHardware</plugin>
+          <!-- TODO: 실제 U2D2/RS-485 포트로 교체 -->
+          <param name="usb_port">/dev/ttyUSB0</param>
+          <param name="baud_rate">1000000</param>
+        </hardware>
+        <joint name="${prefix}base_rotate_joint">
+          <param name="id">1</param>
+          <command_interface name="position"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+        </joint>
+      </ros2_control>
+
+      <!-- ===== gripper_joint : Dynamixel MX-106T (TTL) ===== -->
+      <ros2_control name="${prefix}gripper_bus" type="system">
+        <hardware>
+          <plugin>dynamixel_hardware/DynamixelHardware</plugin>
+          <!-- TODO: 실제 U2D2/TTL 포트로 교체 -->
+          <param name="usb_port">/dev/ttyUSB1</param>
+          <param name="baud_rate">1000000</param>
+        </hardware>
+        <joint name="${prefix}gripper_joint">
+          <param name="id">5</param>
+          <command_interface name="position"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+        </joint>
+      </ros2_control>
+
+      <!-- ===== shoulder_lift_joint : RMD-X8-120 (CAN) ===== -->
+      <ros2_control name="${prefix}shoulder_actuator" type="actuator">
+        <hardware>
+          <plugin>myactuator_rmd_hardware/MyActuatorRmdHardwareInterface</plugin>
+          <!-- TODO: 실제 CAN 인터페이스/ID/토크상수로 교체 -->
+          <param name="ifname">can0</param>
+          <param name="actuator_id">2</param>
+          <param name="torque_constant">1.0</param>
+        </hardware>
+        <joint name="${prefix}shoulder_lift_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+        </joint>
+      </ros2_control>
+
+      <!-- ===== elbow_joint : RMD-X6-60 (CAN) ===== -->
+      <ros2_control name="${prefix}elbow_actuator" type="actuator">
+        <hardware>
+          <plugin>myactuator_rmd_hardware/MyActuatorRmdHardwareInterface</plugin>
+          <param name="ifname">can0</param>
+          <param name="actuator_id">3</param>
+          <param name="torque_constant">1.0</param>
+        </hardware>
+        <joint name="${prefix}elbow_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+        </joint>
+      </ros2_control>
+
+      <!-- ===== wrist_joint : RMD-X4-36 (CAN) ===== -->
+      <ros2_control name="${prefix}wrist_actuator" type="actuator">
+        <hardware>
+          <plugin>myactuator_rmd_hardware/MyActuatorRmdHardwareInterface</plugin>
+          <param name="ifname">can0</param>
+          <param name="actuator_id">4</param>
+          <param name="torque_constant">1.0</param>
+        </hardware>
+        <joint name="${prefix}wrist_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"/>
+          <state_interface name="velocity"/>
+          <state_interface name="effort"/>
+        </joint>
+      </ros2_control>
+
+    </xacro:unless>
+
+  </xacro:macro>
+
+</robot>

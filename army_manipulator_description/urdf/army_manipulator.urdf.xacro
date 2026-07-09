@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<robot name="army_manipulator" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- true: mock_components/GenericSystem (RViz/MoveIt2 검증용, 기본값)
+       false: 실제 하드웨어 인터페이스 (팀원 Hardware Interface 완성 후) -->
+  <xacro:arg name="use_mock_hardware" default="true"/>
+
+  <!-- 구동부 상면 높이: world -> base_link -->
+  <xacro:property name="base_height" value="0.350"/>
+
+  <xacro:include filename="$(find army_manipulator_description)/urdf/materials.xacro"/>
+  <xacro:include filename="$(find army_manipulator_description)/urdf/army_manipulator_ros2_control.xacro"/>
+  <xacro:include filename="$(find army_manipulator_description)/urdf/army_manipulator_macro.xacro"/>
+
+  <link name="world"/>
+
+  <xacro:army_manipulator prefix="" parent="world" use_mock_hardware="$(arg use_mock_hardware)">
+    <origin xyz="0 0 ${base_height}" rpy="0 0 0"/>
+  </xacro:army_manipulator>
+
+</robot>

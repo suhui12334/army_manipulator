@@ -1,0 +1,251 @@
+<?xml version="1.0"?>
+<!--
+  MARU 로봇팔 매크로
+  ============================================================
+  확정 파라미터 (베이스 상판 기준, prefix + parent 하위에 전개됨):
+    베이스→숄더 관절축 (sh_off)   = 106.6 mm
+    L1 숄더→엘보우                = 180 mm
+    L2 엘보우→리스트               = 220 mm
+    L3 리스트→TCP                 = 220 mm
+
+    Case C 조인트 오프셋 (z축):
+      shoulder_lift : -55 mm
+      elbow         : +35 mm
+      wrist         : -25 mm
+      gripper       : +38 mm
+
+  조인트 소프트 리밋:
+    base_rotate    : ±180°
+    shoulder_lift  : 0° ~ 120°
+    elbow          : -90° ~ +20°
+    wrist          : ±120°
+    gripper_rotate : ±135°  (m=1 랙, z=28 피니언, 270°회전)
+  ============================================================
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="army_manipulator" params="prefix parent use_mock_hardware:=true *origin">
+
+    <!-- ========== 치수 파라미터 ========== -->
+    <xacro:property name="sh_off"   value="0.1616"/>  <!-- base_link -> shoulder_pan_link -->
+    <xacro:property name="L1"       value="0.180"/>   <!-- shoulder -> elbow -->
+    <xacro:property name="L2"       value="0.220"/>   <!-- elbow -> wrist -->
+    <xacro:property name="L3"       value="0.220"/>   <!-- wrist -> tcp (gripper 포함) -->
+    <xacro:property name="off_shoulder" value="-0.055"/>
+    <xacro:property name="off_elbow"    value="0.035"/>
+    <xacro:property name="off_wrist"    value="-0.025"/>
+    <xacro:property name="off_gripper"  value="0.038"/>
+
+    <!-- ========== parent -> base_link ========== -->
+    <joint name="${prefix}world_to_base" type="fixed">
+      <parent link="${parent}"/>
+      <child  link="${prefix}base_link"/>
+      <xacro:insert_block name="origin"/>
+    </joint>
+
+    <!-- base_link: 암 마운팅 플레이트 (구동부 상면) -->
+    <link name="${prefix}base_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><box size="0.100 0.100 0.008"/></geometry>
+        <material name="petg_grey"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><box size="0.100 0.100 0.008"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.3"/>
+        <origin xyz="0 0 0"/>
+        <inertia ixx="2.5e-4" ixy="0" ixz="0"
+                 iyy="2.5e-4" iyz="0" izz="5.0e-4"/>
+      </inertial>
+    </link>
+
+    <!-- ========== base_link -> shoulder_pan_link ========== -->
+    <!-- XH540-W270-T | Z축 회전 (베이스 선회) -->
+    <joint name="${prefix}base_rotate_joint" type="revolute">
+      <parent link="${prefix}base_link"/>
+      <child  link="${prefix}shoulder_pan_link"/>
+      <origin xyz="0 0 ${sh_off}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="-3.1416" upper="3.1416"
+             effort="3.1" velocity="2.618"/>
+      <!-- XH540 stall torque 3.1 Nm @ 12V, no-load speed 25 RPM = 2.618 rad/s -->
+      <dynamics damping="0.05" friction="0.02"/>
+    </joint>
+
+    <!-- shoulder_pan_link: XH540 모터 바디 -->
+    <link name="${prefix}shoulder_pan_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><cylinder radius="0.028" length="0.055"/></geometry>
+        <material name="motor_dark"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><cylinder radius="0.028" length="0.055"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.202"/>
+        <origin xyz="0 0 0"/>
+        <inertia ixx="1.3e-4" ixy="0" ixz="0"
+                 iyy="1.3e-4" iyz="0" izz="8.0e-5"/>
+      </inertial>
+    </link>
+
+    <!-- ========== shoulder_pan_link -> upper_arm_link ========== -->
+    <!-- RMD-X8-120 | Y축 회전 (숄더 피치), Case C 오프셋 z=-55mm -->
+    <joint name="${prefix}shoulder_lift_joint" type="revolute">
+      <parent link="${prefix}shoulder_pan_link"/>
+      <child  link="${prefix}upper_arm_link"/>
+      <origin xyz="0 0 ${off_shoulder}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="0.0" upper="2.0944"
+             effort="120.0" velocity="1.047"/>
+      <!-- RMD-X8-120 peak torque 120 Nm, no-load speed ~10 RPM = 1.047 rad/s -->
+      <dynamics damping="1.0" friction="0.1"/>
+    </joint>
+
+    <!-- upper_arm_link: CFRP 20x20x2T, L1 = 180mm -->
+    <link name="${prefix}upper_arm_link">
+      <visual>
+        <origin xyz="${L1/2} 0 0" rpy="0 1.5708 0"/>
+        <geometry><box size="0.020 0.020 ${L1}"/></geometry>
+        <material name="cfrp"/>
+      </visual>
+      <collision>
+        <origin xyz="${L1/2} 0 0" rpy="0 0 0"/>
+        <geometry><box size="${L1} 0.022 0.022"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.08"/>
+        <origin xyz="${L1/2} 0 0"/>
+        <inertia ixx="6.0e-6" ixy="0" ixz="0"
+                 iyy="2.2e-4" iyz="0" izz="2.2e-4"/>
+      </inertial>
+    </link>
+
+    <!-- ========== upper_arm_link -> forearm_link ========== -->
+    <!-- RMD-X6-60 | Y축 회전 (엘보우 피치), x=L1, Case C 오프셋 z=+35mm -->
+    <joint name="${prefix}elbow_joint" type="revolute">
+      <parent link="${prefix}upper_arm_link"/>
+      <child  link="${prefix}forearm_link"/>
+      <origin xyz="${L1} 0 ${off_elbow}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="-1.5708" upper="0.3491"
+             effort="60.0" velocity="1.571"/>
+      <!-- RMD-X6-60 peak torque 60 Nm -->
+      <dynamics damping="0.5" friction="0.05"/>
+    </joint>
+
+    <!-- forearm_link: CFRP 20x20x2T, L2 = 220mm -->
+    <link name="${prefix}forearm_link">
+      <visual>
+        <origin xyz="${L2/2} 0 0" rpy="0 1.5708 0"/>
+        <geometry><box size="0.020 0.020 ${L2}"/></geometry>
+        <material name="cfrp"/>
+      </visual>
+      <collision>
+        <origin xyz="${L2/2} 0 0" rpy="0 0 0"/>
+        <geometry><box size="${L2} 0.022 0.022"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.10"/>
+        <origin xyz="${L2/2} 0 0"/>
+        <inertia ixx="7.3e-6" ixy="0" ixz="0"
+                 iyy="4.0e-4" iyz="0" izz="4.0e-4"/>
+      </inertial>
+    </link>
+
+    <!-- ========== forearm_link -> wrist_link ========== -->
+    <!-- RMD-X4-36 | Y축 회전 (리스트 피치), x=L2, Case C 오프셋 z=-25mm -->
+    <joint name="${prefix}wrist_joint" type="revolute">
+      <parent link="${prefix}forearm_link"/>
+      <child  link="${prefix}wrist_link"/>
+      <origin xyz="${L2} 0 ${off_wrist}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="-2.0944" upper="2.0944"
+             effort="36.0" velocity="2.618"/>
+      <!-- RMD-X4-36 peak torque 36 Nm -->
+      <dynamics damping="0.2" friction="0.02"/>
+    </joint>
+
+    <!-- wrist_link: 리스트 모터 하우징 (PETG) -->
+    <link name="${prefix}wrist_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><cylinder radius="0.022" length="0.038"/></geometry>
+        <material name="petg_grey"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><cylinder radius="0.022" length="0.038"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.09"/>
+        <origin xyz="0 0 0"/>
+        <inertia ixx="5.0e-5" ixy="0" ixz="0"
+                 iyy="5.0e-5" iyz="0" izz="3.0e-5"/>
+      </inertial>
+    </link>
+
+    <!-- ========== wrist_link -> gripper_base_link ========== -->
+    <!-- MX-106T | Z축 회전 (그리퍼 회전/핑거 구동), Case C 오프셋 z=+38mm -->
+    <joint name="${prefix}gripper_joint" type="revolute">
+      <parent link="${prefix}wrist_link"/>
+      <child  link="${prefix}gripper_base_link"/>
+      <origin xyz="0 0 ${off_gripper}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="-2.3562" upper="2.3562"
+             effort="8.4" velocity="3.665"/>
+      <!-- MX-106T stall torque 8.4 Nm @ 12V, no-load 45 RPM = 4.712 rad/s -->
+      <dynamics damping="0.05" friction="0.01"/>
+    </joint>
+
+    <!-- gripper_base_link: EE 바디 + 핑거 어셈블리 -->
+    <link name="${prefix}gripper_base_link">
+      <visual>
+        <origin xyz="0 0 0.110" rpy="0 0 0"/>
+        <geometry><box size="0.040 0.095 0.182"/></geometry>
+        <!-- 너비 95mm = 95x95x95 타겟 기준 최대 개구량 -->
+        <material name="petg_grey"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0.110" rpy="0 0 0"/>
+        <geometry><box size="0.040 0.095 0.182"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.15"/>
+        <origin xyz="0 0 0.110"/>
+        <inertia ixx="5.0e-4" ixy="0" ixz="0"
+                 iyy="5.0e-4" iyz="0" izz="1.0e-4"/>
+      </inertial>
+    </link>
+
+    <!-- ========== gripper_base_link -> tcp_link (fixed) ========== -->
+    <joint name="${prefix}tcp_joint" type="fixed">
+      <parent link="${prefix}gripper_base_link"/>
+      <child  link="${prefix}tcp_link"/>
+      <origin xyz="0 0 0.182" rpy="0 0 0"/>
+    </joint>
+
+    <!-- tcp_link: 툴 센터 포인트 -->
+    <link name="${prefix}tcp_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><sphere radius="0.005"/></geometry>
+        <material name="tcp_red"/>
+      </visual>
+      <inertial>
+        <mass value="0.001"/>
+        <inertia ixx="1e-7" ixy="0" ixz="0"
+                 iyy="1e-7" iyz="0" izz="1e-7"/>
+      </inertial>
+    </link>
+
+    <xacro:army_manipulator_ros2_control prefix="${prefix}" use_mock_hardware="${use_mock_hardware}"/>
+
+  </xacro:macro>
+
+</robot>
