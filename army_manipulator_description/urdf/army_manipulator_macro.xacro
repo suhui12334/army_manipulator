@@ -9,9 +9,9 @@
     L3 리스트→TCP                 = 220 mm
 
     Case C 조인트 오프셋 (z축):
-      shoulder_lift : -55 mm
-      elbow         : +35 mm
-      wrist         : -25 mm
+      shoulder_lift : -37.7 mm
+      elbow         : +18.8 mm
+      wrist         : -31.3 mm
       gripper       : +38 mm
 
   조인트 소프트 리밋:
@@ -31,9 +31,9 @@
     <xacro:property name="L1"       value="0.180"/>   <!-- shoulder -> elbow -->
     <xacro:property name="L2"       value="0.220"/>   <!-- elbow -> wrist -->
     <xacro:property name="L3"       value="0.220"/>   <!-- wrist -> tcp (gripper 포함) -->
-    <xacro:property name="off_shoulder" value="-0.055"/>
-    <xacro:property name="off_elbow"    value="0.035"/>
-    <xacro:property name="off_wrist"    value="-0.025"/>
+    <xacro:property name="off_shoulder" value="-0.0377"/>
+    <xacro:property name="off_elbow"    value="0.0188"/>
+    <xacro:property name="off_wrist"    value="-0.0313"/>
     <xacro:property name="off_gripper"  value="0.038"/>
 
     <!-- ========== parent -> base_link ========== -->
@@ -95,7 +95,7 @@
     </link>
 
     <!-- ========== shoulder_pan_link -> upper_arm_link ========== -->
-    <!-- RMD-X8-120 | Y축 회전 (숄더 피치), Case C 오프셋 z=-55mm -->
+    <!-- RMD-X8-120 | Y축 회전 (숄더 피치), Case C 오프셋 z=-37.7mm -->
     <joint name="${prefix}shoulder_lift_joint" type="revolute">
       <parent link="${prefix}shoulder_pan_link"/>
       <child  link="${prefix}upper_arm_link"/>
@@ -127,7 +127,7 @@
     </link>
 
     <!-- ========== upper_arm_link -> forearm_link ========== -->
-    <!-- RMD-X6-60 | Y축 회전 (엘보우 피치), x=L1, Case C 오프셋 z=+35mm -->
+    <!-- RMD-X6-60 | Y축 회전 (엘보우 피치), x=L1, Case C 오프셋 z=+18.8mm -->
     <joint name="${prefix}elbow_joint" type="revolute">
       <parent link="${prefix}upper_arm_link"/>
       <child  link="${prefix}forearm_link"/>
@@ -159,7 +159,7 @@
     </link>
 
     <!-- ========== forearm_link -> wrist_link ========== -->
-    <!-- RMD-X4-36 | Y축 회전 (리스트 피치), x=L2, Case C 오프셋 z=-25mm -->
+    <!-- RMD-X4-36 | Y축 회전 (리스트 피치), x=L2, Case C 오프셋 z=-31.3mm -->
     <joint name="${prefix}wrist_joint" type="revolute">
       <parent link="${prefix}forearm_link"/>
       <child  link="${prefix}wrist_link"/>
