@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(army_manipulator_moveit_config)
+project(army_manipulator_moveit_config LANGUAGES NONE)
 
 find_package(ament_cmake REQUIRED)
 
