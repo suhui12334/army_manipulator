@@ -1,6 +1,6 @@
 # army_manipulator
 
-MARU(Modular Autonomous Rescue Unit) 재난구조로봇의 4DoF + 1 Gripper 로봇팔 상위 제어 패키지 모음.
+재난구조로봇의 4DoF + 1 Gripper 로봇팔 상위 제어 패키지 모음.
 ROS2 Humble + ros2_control + MoveIt2 기반.
 
 ## 하드웨어 스펙
@@ -8,9 +8,9 @@ ROS2 Humble + ros2_control + MoveIt2 기반.
 | 조인트 | 액추에이터 | 통신 | 회전축 | 비고 |
 |---|---|---|---|---|
 | joint_base (`base_rotate_joint`) | XH540-W270-T | RS-485 (Dynamixel) | Z | 베이스 선회 |
-| joint_shoulder (`shoulder_lift_joint`) | RMD-X8-120 | CAN | Y | 오프셋 -55mm |
-| joint_elbow (`elbow_joint`) | RMD-X6-60 | CAN | Y | 오프셋 +35mm |
-| joint_wrist (`wrist_joint`) | RMD-X4-36 | CAN | Y | 오프셋 -25mm |
+| joint_shoulder (`shoulder_lift_joint`) | RMD-X8-120 | CAN | Y | 오프셋 -37.7mm |
+| joint_elbow (`elbow_joint`) | RMD-X6-60 | CAN | Y | 오프셋 +18.8mm |
+| joint_wrist (`wrist_joint`) | RMD-X4-36 | CAN | Y | 오프셋 -31.3mm |
 | joint_gripper (`gripper_joint`) | MX-106T | TTL (Dynamixel) | Z | 랙-피니언 |
 
 링크: 20x20x2T CFRP 사각 파이프 / 하우징: PETG 3D프린팅
