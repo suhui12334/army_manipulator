@@ -59,7 +59,7 @@ GUI에서 **Edit Existing MoveIt Configuration Package** 선택 후
 ros2 launch army_manipulator_bringup mock_bringup.launch.py
 ```
 
-### 4) 실제 하드웨어 전환 (팀원 Hardware Interface 완성 후)
+### 4) 실제 하드웨어 전환
 
 ```bash
 ros2 launch army_manipulator_bringup mock_bringup.launch.py use_mock_hardware:=false
