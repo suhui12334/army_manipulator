@@ -7,7 +7,7 @@ ROS2 Humble + ros2_control + MoveIt2 기반.
 
 | 조인트 | 액추에이터 | 통신 | 회전축 | 비고 |
 |---|---|---|---|---|
-| joint_base (`base_rotate_joint`) | XH540-W270-T | RS-485 (Dynamixel) | Z | 베이스 선회 |
+| joint_base (`base_rotate_joint`) | XH540-W270-T | TTL (Dynamixel) | Z | 베이스 선회 |
 | joint_shoulder (`shoulder_lift_joint`) | RMD-X8-120 | CAN | Y | 오프셋 -37.7mm |
 | joint_elbow (`elbow_joint`) | RMD-X6-60 | CAN | Y | 오프셋 +18.8mm |
 | joint_wrist (`wrist_joint`) | RMD-X4-36 | CAN | Y | 오프셋 -31.3mm |
