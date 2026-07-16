@@ -2,17 +2,37 @@
 <!--
   MARU 로봇팔 매크로
   ============================================================
-  확정 파라미터 (베이스 상판 기준, prefix + parent 하위에 전개됨):
-    베이스→숄더 관절축 (sh_off)   = 106.6 mm
-    L1 숄더→엘보우                = 180 mm
-    L2 엘보우→리스트               = 220 mm
-    L3 리스트→TCP                 = 220 mm
+  STL 좌표축 컨벤션 (모든 mesh에 공통, 사용자 확정):
+    전면부 = +Z, 하단부 = +Y, 우측 = +X
+  이 컨벤션을 그대로 URDF 링크 로컬 프레임으로 사용한다 (mesh 회전 없음).
+  기본(전체 조인트 값 0) 자세에서는 체인이 -Y 방향으로 순서대로 쌓인다.
 
-    Case C 조인트 오프셋 (z축):
-      shoulder_lift : -37.7 mm
-      elbow         : +18.8 mm
-      wrist         : -31.3 mm
-      gripper       : +38 mm
+  링크/조인트 체인 (모두 STL 파일명과 링크명이 1:1 대응):
+    world -[world_to_base, fixed]-> base_actuator (base_actuator.stl)
+    base_actuator -[base_rotate_joint, revolute, axis Z]-> base_link (base_link.stl)
+    base_link -[shoulder_lift_joint, revolute, axis X]-> shoulder_link (shoulder_link.stl)
+    shoulder_link -[elbow_joint, revolute, axis X]-> elbow_link (elbow_link.stl)
+    elbow_link -[wrist_joint, revolute, axis X]-> wrist_link (wrist_link.stl)
+    wrist_link -[gripper_joint, revolute, axis Z]-> pinion_gear (pinion_gear.stl)
+    pinion_gear -[rack_left_joint/rack_right_joint, prismatic, axis X]-> lack_left/lack_right
+
+    (보조) wrist_link -[cam_mount_joint, fixed]-> cam_link
+    (보조) pinion_gear -[tcp_joint, fixed]-> tcp_link
+
+  확정 파라미터 (-Y 주축 스택 거리 = "이전(parent) 링크" 자신의 STL bbox
+  Y-extent 실측값. 즉 각 조인트 origin은 부모 링크 자신의 길이만큼 -Y로 이동):
+    base_actuator→base_link (base_off)        = 44.75 mm (base_actuator.stl Y-extent)
+    base_link→shoulder_link (shoulder_off)    = 208.63 mm (base_link.stl Y-extent)
+    L1 shoulder_link→elbow_link               = 228.07 mm (shoulder_link.stl Y-extent)
+    L2 elbow_link→wrist_link                  = 252.78 mm (elbow_link.stl Y-extent)
+    L3 wrist_link→pinion_gear                 = 164.10 mm (wrist_link.stl Y-extent)
+    pinion_gear→lack_left/right (rack_off)    = 8 mm (Z, 전면방향 깊이)
+    pinion_gear→tcp_link (tcp_off)            = 65 mm (Z, 전면방향)
+
+    Case C 조인트 보조 오프셋 (Z축, 주축 -Y에 수직):
+      elbow   : +18.8 mm
+      wrist   : -31.3 mm
+      gripper : +38 mm
 
   조인트 리미트:
     기존에 이 파일에 하드코딩돼 있던 가정치(base ±180°, shoulder 0~120°,
@@ -29,21 +49,26 @@
 
   TODO(home-pose): 각 조인트의 기본자세(홈 포지션, 현재는 SRDF group_state
   "home"에서 전부 actual=0으로 둠)는 아직 CATIA 확인 전 플레이스홀더다.
-  TODO(base-pan-axis): base_rotate_joint의 회전축 방향/장착 orientation은
-  CATIA로 재확인 필요.
+  TODO(cam-origin): cam_mount_joint의 origin/rpy는 아직 실측치가 없다
+  (수평/높이 값은 기존 메모리 기록을 새 축 컨벤션에 맞춰 재배치한 1차
+  추정값). RViz 확인 후 보정 필요.
   ============================================================
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <xacro:macro name="army_manipulator" params="prefix parent use_mock_hardware:=true use_mesh:=false *origin">
 
-    <!-- ========== 치수 파라미터 ========== -->
-    <xacro:property name="sh_off"   value="0.1616"/>  <!-- base_link -> shoulder_pan_link -->
-    <xacro:property name="L1"       value="0.180"/>   <!-- shoulder -> elbow -->
-    <xacro:property name="L2"       value="0.220"/>   <!-- elbow -> wrist -->
-    <xacro:property name="L3"       value="0.220"/>   <!-- wrist -> tcp (gripper 포함) -->
-    <xacro:property name="off_shoulder" value="-0.0377"/>
-    <xacro:property name="off_elbow"    value="0.0188"/>
+    <!-- ========== 치수 파라미터 (전부 STL 로컬 축 그대로: X=우측, Y=하단, Z=전면) ========== -->
+    <!-- 각 오프셋은 "이전(parent) 링크" 자신의 STL bbox Y-extent(로컬 원점에서 -Y로
+         뻗어나간 실측 길이)를 사용한다 (STL bbox 분석 결과, mm -> m 변환). -->
+    <xacro:property name="base_off"     value="0.04475"/>  <!-- base_actuator.stl Y-extent -->
+    <xacro:property name="shoulder_off" value="0.20863"/>  <!-- base_link.stl Y-extent -->
+    <xacro:property name="L1"           value="0.22807"/>  <!-- shoulder_link.stl Y-extent -->
+    <xacro:property name="L2"           value="0.25278"/>  <!-- elbow_link.stl Y-extent -->
+    <xacro:property name="L3"           value="0.16410"/>  <!-- wrist_link.stl Y-extent -->
+    <xacro:property name="rack_off"     value="0.008"/>   <!-- pinion_gear -> lack_left/right (Z, 전면방향 깊이) -->
+    <xacro:property name="tcp_off"      value="0.065"/>   <!-- pinion_gear -> tcp_link (Z, 전면방향) -->
+    <xacro:property name="off_elbow"    value="0.0188"/>  <!-- Case C 보조 오프셋 (Z축) -->
     <xacro:property name="off_wrist"    value="-0.0313"/>
     <xacro:property name="off_gripper"  value="0.038"/>
 
@@ -78,16 +103,62 @@
     <xacro:property name="gripper_limit_upper"
                      value="${joint_calib['joints']['gripper_joint']['raw_max'] - joint_calib['joints']['gripper_joint']['zero_offset']}"/>
 
-    <!-- ========== parent -> base_link ========== -->
+    <!-- ========== parent -> base_actuator ========== -->
     <joint name="${prefix}world_to_base" type="fixed">
       <parent link="${parent}"/>
-      <child  link="${prefix}base_link"/>
+      <child  link="${prefix}base_actuator"/>
       <xacro:insert_block name="origin"/>
     </joint>
 
-    <!-- base_link: 암 마운팅 플레이트 (구동부 상면) -->
+    <!-- base_actuator: XH540-W270-T 모터 바디 (고정, 월드에 마운트) -->
+    <link name="${prefix}base_actuator">
+      <xacro:if value="${use_mesh}">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <!-- base_actuator.stl (33.5x58.5x54.3mm 실측, XH540 규격과 일치) -->
+          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/base_actuator.stl" scale="0.001 0.001 0.001"/></geometry>
+          <material name="motor_dark"/>
+        </visual>
+        <collision>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/base_actuator.stl" scale="0.001 0.001 0.001"/></geometry>
+        </collision>
+      </xacro:if>
+      <xacro:unless value="${use_mesh}">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><cylinder radius="0.028" length="0.055"/></geometry>
+          <material name="motor_dark"/>
+        </visual>
+        <collision>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><cylinder radius="0.028" length="0.055"/></geometry>
+        </collision>
+      </xacro:unless>
+      <inertial>
+        <mass value="0.202"/>
+        <origin xyz="0 0 0"/>
+        <inertia ixx="1.3e-4" ixy="0" ixz="0"
+                 iyy="1.3e-4" iyz="0" izz="8.0e-5"/>
+      </inertial>
+    </link>
+
+    <!-- ========== base_actuator -> base_link ========== -->
+    <!-- XH540-W270-T 출력축 | Z축 회전 (베이스 선회) -->
+    <joint name="${prefix}base_rotate_joint" type="revolute">
+      <parent link="${prefix}base_actuator"/>
+      <child  link="${prefix}base_link"/>
+      <origin xyz="0 ${-base_off} 0" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <!-- 실측 인코더 리미트(raw_min/raw_max) - zero_offset. config/joint_calibration.yaml -->
+      <limit lower="${base_rotate_limit_lower}" upper="${base_rotate_limit_upper}"
+             effort="3.1" velocity="2.618"/>
+      <!-- XH540 stall torque 3.1 Nm @ 12V, no-load speed 25 RPM = 2.618 rad/s -->
+      <dynamics damping="0.05" friction="0.02"/>
+    </joint>
+
+    <!-- base_link: 베이스 회전판 -->
     <link name="${prefix}base_link">
-      <!-- mesh 파일은 사용자가 추후 추가 예정. scale은 CATIA(mm) -> URDF(m) 변환용. -->
       <xacro:if value="${use_mesh}">
         <visual>
           <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -118,59 +189,13 @@
       </inertial>
     </link>
 
-    <!-- ========== base_link -> shoulder_pan_link ========== -->
-    <!-- XH540-W270-T | Z축 회전 (베이스 선회) -->
-    <joint name="${prefix}base_rotate_joint" type="revolute">
-      <parent link="${prefix}base_link"/>
-      <child  link="${prefix}shoulder_pan_link"/>
-      <origin xyz="0 0 ${sh_off}" rpy="0 0 0"/>
-      <axis xyz="0 0 1"/>
-      <!-- 실측 인코더 리미트(raw_min/raw_max) - zero_offset. config/joint_calibration.yaml -->
-      <limit lower="${base_rotate_limit_lower}" upper="${base_rotate_limit_upper}"
-             effort="3.1" velocity="2.618"/>
-      <!-- XH540 stall torque 3.1 Nm @ 12V, no-load speed 25 RPM = 2.618 rad/s -->
-      <dynamics damping="0.05" friction="0.02"/>
-    </joint>
-
-    <!-- shoulder_pan_link: XH540 모터 바디 -->
-    <link name="${prefix}shoulder_pan_link">
-      <xacro:if value="${use_mesh}">
-        <visual>
-          <origin xyz="0 0 0" rpy="0 0 0"/>
-          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/shoulder_pan_link.stl" scale="0.001 0.001 0.001"/></geometry>
-          <material name="motor_dark"/>
-        </visual>
-        <collision>
-          <origin xyz="0 0 0" rpy="0 0 0"/>
-          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/shoulder_pan_link.stl" scale="0.001 0.001 0.001"/></geometry>
-        </collision>
-      </xacro:if>
-      <xacro:unless value="${use_mesh}">
-        <visual>
-          <origin xyz="0 0 0" rpy="0 0 0"/>
-          <geometry><cylinder radius="0.028" length="0.055"/></geometry>
-          <material name="motor_dark"/>
-        </visual>
-        <collision>
-          <origin xyz="0 0 0" rpy="0 0 0"/>
-          <geometry><cylinder radius="0.028" length="0.055"/></geometry>
-        </collision>
-      </xacro:unless>
-      <inertial>
-        <mass value="0.202"/>
-        <origin xyz="0 0 0"/>
-        <inertia ixx="1.3e-4" ixy="0" ixz="0"
-                 iyy="1.3e-4" iyz="0" izz="8.0e-5"/>
-      </inertial>
-    </link>
-
-    <!-- ========== shoulder_pan_link -> upper_arm_link ========== -->
-    <!-- RMD-X8-120 | Y축 회전 (숄더 피치), Case C 오프셋 z=-37.7mm -->
+    <!-- ========== base_link -> shoulder_link ========== -->
+    <!-- RMD-X8-120 | X축 회전 (숄더 피치, X=우측 방향=수평축) -->
     <joint name="${prefix}shoulder_lift_joint" type="revolute">
-      <parent link="${prefix}shoulder_pan_link"/>
-      <child  link="${prefix}upper_arm_link"/>
-      <origin xyz="0 0 ${off_shoulder}" rpy="0 0 0"/>
-      <axis xyz="0 1 0"/>
+      <parent link="${prefix}base_link"/>
+      <child  link="${prefix}shoulder_link"/>
+      <origin xyz="0 ${-shoulder_off} 0" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
       <!-- 실측 인코더 리미트(raw_min/raw_max) - zero_offset. config/joint_calibration.yaml -->
       <limit lower="${shoulder_lift_limit_lower}" upper="${shoulder_lift_limit_upper}"
              effort="120.0" velocity="1.047"/>
@@ -178,45 +203,45 @@
       <dynamics damping="1.0" friction="0.1"/>
     </joint>
 
-    <!-- upper_arm_link: CFRP 20x20x2T, L1 = 180mm -->
-    <link name="${prefix}upper_arm_link">
+    <!-- shoulder_link: RMD-X8-120 출력 플랜지 + L1 CFRP 튜브 + RMD-X6-60 케이스 통합 파츠 -->
+    <link name="${prefix}shoulder_link">
       <xacro:if value="${use_mesh}">
         <visual>
           <origin xyz="0 0 0" rpy="0 0 0"/>
-          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/upper_arm_link.stl" scale="0.001 0.001 0.001"/></geometry>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/shoulder_link.stl" scale="0.001 0.001 0.001"/></geometry>
           <material name="cfrp"/>
         </visual>
         <collision>
           <origin xyz="0 0 0" rpy="0 0 0"/>
-          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/upper_arm_link.stl" scale="0.001 0.001 0.001"/></geometry>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/shoulder_link.stl" scale="0.001 0.001 0.001"/></geometry>
         </collision>
       </xacro:if>
       <xacro:unless value="${use_mesh}">
         <visual>
-          <origin xyz="${L1/2} 0 0" rpy="0 1.5708 0"/>
+          <origin xyz="0 ${-L1/2} 0" rpy="1.5708 0 0"/>
           <geometry><box size="0.020 0.020 ${L1}"/></geometry>
           <material name="cfrp"/>
         </visual>
         <collision>
-          <origin xyz="${L1/2} 0 0" rpy="0 0 0"/>
-          <geometry><box size="${L1} 0.022 0.022"/></geometry>
+          <origin xyz="0 ${-L1/2} 0" rpy="0 0 0"/>
+          <geometry><box size="0.022 ${L1} 0.022"/></geometry>
         </collision>
       </xacro:unless>
       <inertial>
         <mass value="0.08"/>
-        <origin xyz="${L1/2} 0 0"/>
-        <inertia ixx="6.0e-6" ixy="0" ixz="0"
-                 iyy="2.2e-4" iyz="0" izz="2.2e-4"/>
+        <origin xyz="0 ${-L1/2} 0"/>
+        <inertia ixx="2.2e-4" ixy="0" ixz="0"
+                 iyy="6.0e-6" iyz="0" izz="2.2e-4"/>
       </inertial>
     </link>
 
-    <!-- ========== upper_arm_link -> forearm_link ========== -->
-    <!-- RMD-X6-60 | Y축 회전 (엘보우 피치), x=L1, Case C 오프셋 z=+18.8mm -->
+    <!-- ========== shoulder_link -> elbow_link ========== -->
+    <!-- RMD-X6-60 | X축 회전 (엘보우 피치), y=-L1, Case C 보조 오프셋 z=+18.8mm -->
     <joint name="${prefix}elbow_joint" type="revolute">
-      <parent link="${prefix}upper_arm_link"/>
-      <child  link="${prefix}forearm_link"/>
-      <origin xyz="${L1} 0 ${off_elbow}" rpy="0 0 0"/>
-      <axis xyz="0 1 0"/>
+      <parent link="${prefix}shoulder_link"/>
+      <child  link="${prefix}elbow_link"/>
+      <origin xyz="0 ${-L1} ${off_elbow}" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
       <!-- 실측 인코더 리미트(raw_min/raw_max) - zero_offset. config/joint_calibration.yaml -->
       <limit lower="${elbow_limit_lower}" upper="${elbow_limit_upper}"
              effort="60.0" velocity="1.571"/>
@@ -224,45 +249,45 @@
       <dynamics damping="0.5" friction="0.05"/>
     </joint>
 
-    <!-- forearm_link: CFRP 20x20x2T, L2 = 220mm -->
-    <link name="${prefix}forearm_link">
+    <!-- elbow_link: RMD-X6-60 출력 플랜지 + L2 CFRP 튜브 + RMD-X4-36 케이스 통합 파츠 -->
+    <link name="${prefix}elbow_link">
       <xacro:if value="${use_mesh}">
         <visual>
           <origin xyz="0 0 0" rpy="0 0 0"/>
-          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/forearm_link.stl" scale="0.001 0.001 0.001"/></geometry>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/elbow_link.stl" scale="0.001 0.001 0.001"/></geometry>
           <material name="cfrp"/>
         </visual>
         <collision>
           <origin xyz="0 0 0" rpy="0 0 0"/>
-          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/forearm_link.stl" scale="0.001 0.001 0.001"/></geometry>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/elbow_link.stl" scale="0.001 0.001 0.001"/></geometry>
         </collision>
       </xacro:if>
       <xacro:unless value="${use_mesh}">
         <visual>
-          <origin xyz="${L2/2} 0 0" rpy="0 1.5708 0"/>
+          <origin xyz="0 ${-L2/2} 0" rpy="1.5708 0 0"/>
           <geometry><box size="0.020 0.020 ${L2}"/></geometry>
           <material name="cfrp"/>
         </visual>
         <collision>
-          <origin xyz="${L2/2} 0 0" rpy="0 0 0"/>
-          <geometry><box size="${L2} 0.022 0.022"/></geometry>
+          <origin xyz="0 ${-L2/2} 0" rpy="0 0 0"/>
+          <geometry><box size="0.022 ${L2} 0.022"/></geometry>
         </collision>
       </xacro:unless>
       <inertial>
         <mass value="0.10"/>
-        <origin xyz="${L2/2} 0 0"/>
-        <inertia ixx="7.3e-6" ixy="0" ixz="0"
-                 iyy="4.0e-4" iyz="0" izz="4.0e-4"/>
+        <origin xyz="0 ${-L2/2} 0"/>
+        <inertia ixx="4.0e-4" ixy="0" ixz="0"
+                 iyy="7.3e-6" iyz="0" izz="4.0e-4"/>
       </inertial>
     </link>
 
-    <!-- ========== forearm_link -> wrist_link ========== -->
-    <!-- RMD-X4-36 | Y축 회전 (리스트 피치), x=L2, Case C 오프셋 z=-31.3mm -->
+    <!-- ========== elbow_link -> wrist_link ========== -->
+    <!-- RMD-X4-36 | X축 회전 (리스트 피치), y=-L2, Case C 보조 오프셋 z=-31.3mm -->
     <joint name="${prefix}wrist_joint" type="revolute">
-      <parent link="${prefix}forearm_link"/>
+      <parent link="${prefix}elbow_link"/>
       <child  link="${prefix}wrist_link"/>
-      <origin xyz="${L2} 0 ${off_wrist}" rpy="0 0 0"/>
-      <axis xyz="0 1 0"/>
+      <origin xyz="0 ${-L2} ${off_wrist}" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
       <!-- 실측 인코더 리미트(raw_min/raw_max) - zero_offset. config/joint_calibration.yaml -->
       <limit lower="${wrist_limit_lower}" upper="${wrist_limit_upper}"
              effort="36.0" velocity="2.618"/>
@@ -302,12 +327,56 @@
       </inertial>
     </link>
 
-    <!-- ========== wrist_link -> gripper_base_link ========== -->
-    <!-- MX-106T | Z축 회전 (그리퍼 회전/핑거 구동), Case C 오프셋 z=+38mm -->
+    <!-- ========== wrist_link -> cam_link (fixed, RealSense D435i 마운트) ==========
+         TODO(cam-origin): 실측치 없음. 기존 메모리 기록(수평 70mm, 높이 100mm,
+         15° 하향 틸트)을 새 축 컨벤션(X=우측, Y=하단, Z=전면)에 맞춰 재배치한
+         1차 추정값이다 (수평->X, 높이->-Y, 하향 틸트->X축 회전). RViz 확인 후 보정 필요. -->
+    <joint name="${prefix}cam_mount_joint" type="fixed">
+      <parent link="${prefix}wrist_link"/>
+      <child  link="${prefix}cam_link"/>
+      <origin xyz="0.070 -0.100 0" rpy="0.2618 0 0"/>  <!-- 15deg = 0.2618 rad, 하향 틸트 -->
+    </joint>
+
+    <!-- cam_link: RealSense D435i 마운트 브라켓 (PETG, 15° 쐐기형 고정) -->
+    <link name="${prefix}cam_link">
+      <xacro:if value="${use_mesh}">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/cam_link.stl" scale="0.001 0.001 0.001"/></geometry>
+          <material name="petg_grey"/>
+        </visual>
+        <collision>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/cam_link.stl" scale="0.001 0.001 0.001"/></geometry>
+        </collision>
+      </xacro:if>
+      <xacro:unless value="${use_mesh}">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><box size="0.025 0.090 0.025"/></geometry>
+          <material name="petg_grey"/>
+        </visual>
+        <collision>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><box size="0.025 0.090 0.025"/></geometry>
+        </collision>
+      </xacro:unless>
+      <inertial>
+        <mass value="0.072"/>  <!-- D435i 실측 중량 -->
+        <origin xyz="0 0 0"/>
+        <inertia ixx="3.0e-5" ixy="0" ixz="0"
+                 iyy="5.0e-6" iyz="0" izz="3.0e-5"/>
+      </inertial>
+    </link>
+
+    <!-- ========== wrist_link -> pinion_gear ========== -->
+    <!-- MX-106T | Z축 회전 (피니언 구동, pinion_gear.stl 원판 두께 방향이 Z임을
+         bbox로 확인: X/Y span ~32mm(피치원 지름), Z span 12mm(두께)),
+         y=-L3, Case C 보조 오프셋 z=+38mm -->
     <joint name="${prefix}gripper_joint" type="revolute">
       <parent link="${prefix}wrist_link"/>
-      <child  link="${prefix}gripper_base_link"/>
-      <origin xyz="0 0 ${off_gripper}" rpy="0 0 0"/>
+      <child  link="${prefix}pinion_gear"/>
+      <origin xyz="0 ${-L3} ${off_gripper}" rpy="0 0 0"/>
       <axis xyz="0 0 1"/>
       <!-- 실측 인코더 리미트(raw_min/raw_max) - zero_offset. config/joint_calibration.yaml -->
       <limit lower="${gripper_limit_lower}" upper="${gripper_limit_upper}"
@@ -316,44 +385,133 @@
       <dynamics damping="0.05" friction="0.01"/>
     </joint>
 
-    <!-- gripper_base_link: EE 바디 + 핑거 어셈블리 -->
-    <link name="${prefix}gripper_base_link">
+    <!-- pinion_gear: m=1, z=30, 피치반경 15mm (module 1 x teeth 30 / 2) -->
+    <xacro:property name="pinion_pitch_radius" value="0.015"/>
+    <link name="${prefix}pinion_gear">
       <xacro:if value="${use_mesh}">
         <visual>
           <origin xyz="0 0 0" rpy="0 0 0"/>
-          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/gripper_base_link.stl" scale="0.001 0.001 0.001"/></geometry>
-          <material name="petg_grey"/>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/pinion_gear.stl" scale="0.001 0.001 0.001"/></geometry>
+          <material name="motor_dark"/>
         </visual>
         <collision>
           <origin xyz="0 0 0" rpy="0 0 0"/>
-          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/gripper_base_link.stl" scale="0.001 0.001 0.001"/></geometry>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/pinion_gear.stl" scale="0.001 0.001 0.001"/></geometry>
         </collision>
       </xacro:if>
       <xacro:unless value="${use_mesh}">
         <visual>
-          <origin xyz="0 0 0.110" rpy="0 0 0"/>
-          <geometry><box size="0.040 0.095 0.182"/></geometry>
-          <!-- 너비 95mm = 95x95x95 타겟 기준 최대 개구량 -->
-          <material name="petg_grey"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><cylinder radius="0.016" length="0.012"/></geometry>
+          <material name="motor_dark"/>
         </visual>
         <collision>
-          <origin xyz="0 0 0.110" rpy="0 0 0"/>
-          <geometry><box size="0.040 0.095 0.182"/></geometry>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><cylinder radius="0.016" length="0.012"/></geometry>
         </collision>
       </xacro:unless>
       <inertial>
-        <mass value="0.15"/>
-        <origin xyz="0 0 0.110"/>
-        <inertia ixx="5.0e-4" ixy="0" ixz="0"
-                 iyy="5.0e-4" iyz="0" izz="1.0e-4"/>
+        <mass value="0.01"/>
+        <origin xyz="0 0 0"/>
+        <inertia ixx="1.0e-6" ixy="0" ixz="0"
+                 iyy="1.0e-6" iyz="0" izz="1.5e-6"/>
       </inertial>
     </link>
 
-    <!-- ========== gripper_base_link -> tcp_link (fixed) ========== -->
+    <!-- ========== pinion_gear -> lack_left (prismatic, mimic) ==========
+         axis="1 0 0"(X, 우측방향)은 lack_left.stl/lack_right.stl 실측 X span
+         (124.5mm, 가장 긴 치수)과 STL bbox 분석으로 확인됨.
+         origin z=rack_off(8mm)는 CATIA 실측 pinion gear -> lack left/right
+         깊이 거리(전면방향=Z)를 반영. -->
+    <joint name="${prefix}rack_left_joint" type="prismatic">
+      <parent link="${prefix}pinion_gear"/>
+      <child  link="${prefix}lack_left"/>
+      <origin xyz="0 0 ${rack_off}" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="0" upper="0.030" effort="8.4" velocity="0.1"/>
+      <!-- 피니언 각속도 -> 랙 선속도 변환: v = omega * pinion_pitch_radius -->
+      <mimic joint="${prefix}gripper_joint" multiplier="${pinion_pitch_radius}" offset="0"/>
+    </joint>
+
+    <link name="${prefix}lack_left">
+      <xacro:if value="${use_mesh}">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/lack_left.stl" scale="0.001 0.001 0.001"/></geometry>
+          <material name="petg_grey"/>
+        </visual>
+        <collision>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/lack_left.stl" scale="0.001 0.001 0.001"/></geometry>
+        </collision>
+      </xacro:if>
+      <xacro:unless value="${use_mesh}">
+        <visual>
+          <origin xyz="0.060 0 0" rpy="0 0 0"/>
+          <geometry><box size="0.120 0.020 0.020"/></geometry>
+          <material name="petg_grey"/>
+        </visual>
+        <collision>
+          <origin xyz="0.060 0 0" rpy="0 0 0"/>
+          <geometry><box size="0.120 0.020 0.020"/></geometry>
+        </collision>
+      </xacro:unless>
+      <inertial>
+        <mass value="0.03"/>
+        <origin xyz="0.060 0 0"/>
+        <inertia ixx="1.0e-6" ixy="0" ixz="0"
+                 iyy="4.0e-5" iyz="0" izz="4.0e-5"/>
+      </inertial>
+    </link>
+
+    <!-- ========== pinion_gear -> lack_right (prismatic, mimic, 반대방향) ========== -->
+    <joint name="${prefix}rack_right_joint" type="prismatic">
+      <parent link="${prefix}pinion_gear"/>
+      <child  link="${prefix}lack_right"/>
+      <origin xyz="0 0 ${rack_off}" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="-0.030" upper="0" effort="8.4" velocity="0.1"/>
+      <!-- 피니언 반대편에 맞물리므로 부호 반대 -->
+      <mimic joint="${prefix}gripper_joint" multiplier="${-pinion_pitch_radius}" offset="0"/>
+    </joint>
+
+    <link name="${prefix}lack_right">
+      <xacro:if value="${use_mesh}">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/lack_right.stl" scale="0.001 0.001 0.001"/></geometry>
+          <material name="petg_grey"/>
+        </visual>
+        <collision>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/lack_right.stl" scale="0.001 0.001 0.001"/></geometry>
+        </collision>
+      </xacro:if>
+      <xacro:unless value="${use_mesh}">
+        <visual>
+          <origin xyz="-0.060 0 0" rpy="0 0 0"/>
+          <geometry><box size="0.120 0.020 0.020"/></geometry>
+          <material name="petg_grey"/>
+        </visual>
+        <collision>
+          <origin xyz="-0.060 0 0" rpy="0 0 0"/>
+          <geometry><box size="0.120 0.020 0.020"/></geometry>
+        </collision>
+      </xacro:unless>
+      <inertial>
+        <mass value="0.03"/>
+        <origin xyz="-0.060 0 0"/>
+        <inertia ixx="1.0e-6" ixy="0" ixz="0"
+                 iyy="4.0e-5" iyz="0" izz="4.0e-5"/>
+      </inertial>
+    </link>
+
+    <!-- ========== pinion_gear -> tcp_link (fixed) ==========
+         CATIA 실측 pinion gear -> 핑거 팁 거리 = 65mm (Z, 전면방향). -->
     <joint name="${prefix}tcp_joint" type="fixed">
-      <parent link="${prefix}gripper_base_link"/>
+      <parent link="${prefix}pinion_gear"/>
       <child  link="${prefix}tcp_link"/>
-      <origin xyz="0 0 0.182" rpy="0 0 0"/>
+      <origin xyz="0 0 ${tcp_off}" rpy="0 0 0"/>
     </joint>
 
     <!-- tcp_link: 툴 센터 포인트 -->
