@@ -68,17 +68,39 @@ ros2 launch army_manipulator_bringup mock_bringup.launch.py use_mock_hardware:=f
 `army_manipulator_description/urdf/army_manipulator_ros2_control.xacro` 의
 `usb_port` / `ifname` / `actuator_id` 를 실제 배선에 맞게 수정해야 한다.
 
-### 5) 실제 mesh 형상으로 확인 (STL 준비 후)
+### 5) 실제 mesh 형상으로 확인 (STL 통합 완료)
 
 ```bash
 ros2 launch army_manipulator_description display.launch.py use_mesh:=true
 ```
 
-`army_manipulator_description/meshes/{visual,collision}/*.stl` 을 링크 이름
-(`base_link.stl`, `shoulder_pan_link.stl`, `upper_arm_link.stl`,
-`forearm_link.stl`, `wrist_link.stl`, `gripper_base_link.stl`)에 맞춰 넣으면
-`use_mesh:=true` 로 primitive geometry 대신 실제 형상을 렌더링한다. 기본값은
-`false`라서 STL이 없어도 기존 데모는 그대로 동작한다.
+`army_manipulator_description/meshes/{visual,collision}/*.stl` 에 실제 STL이
+들어있다. 파일명은 링크 이름과 1:1이 아니라 실측 치수로 대조해서 매핑했다:
+
+| STL 파일 | 매핑된 링크 |
+|---|---|
+| `base_link.stl` | `base_link` |
+| `base_actuator.stl` | `shoulder_pan_link` (XH540 바디) |
+| `shoulder_link.stl` | `upper_arm_link` (RMD-X8-120 플랜지+L1 튜브+RMD-X6-60 케이스) |
+| `elbow_link.stl` | `forearm_link` (RMD-X6-60 플랜지+L2 튜브+RMD-X4-36 케이스) |
+| `wrist_link.stl` | `wrist_link` |
+| `cam_link.stl` | `cam_link` (wrist_link에 fixed) |
+| `pinion_gear.stl` | `pinion_link` (구 gripper_base_link 대체, gripper_joint로 구동) |
+| `lack_left.stl` / `lack_right.stl` | `rack_left_link` / `rack_right_link` (prismatic mimic) |
+
+기본값은 `false`라서 STL 매핑에 문제가 있어도 `use_mesh:=false`(기본)로 돌아가면
+기존 primitive geometry 데모는 그대로 동작한다.
+
+TODO(mesh-origin 검증): 위 매핑은 STL 바운딩박스 실측으로 정한 1차 확정이며,
+cam_link의 정확한 부착 위치(origin)와 rack 슬라이딩 축 방향은 RViz 육안 확인
+후 필요시 보정할 것 (`army_manipulator_macro.xacro`의 TODO 주석 참고).
+
+MoveIt2 쪽(`move_group.launch.py`, `moveit_rviz.launch.py`)에서 mesh를 켜려면
+launch 인자 대신 환경변수를 쓴다 (MoveItConfigsBuilder 제약):
+
+```bash
+ARMY_MANIPULATOR_USE_MESH=true ros2 launch army_manipulator_bringup mock_bringup.launch.py use_mesh:=true
+```
 
 ### 6) 뎁스카메라 + 타겟 검출 파이프라인
 
@@ -86,8 +108,16 @@ ros2 launch army_manipulator_description display.launch.py use_mesh:=true
 ros2 launch army_manipulator_bringup realsense_bringup.launch.py
 ```
 
-RealSense D435i를 켜고 `camera_link` static TF(수평 70mm, 높이 100mm, 15도
-하향 틸트)를 붙인다. `target_detector_node.py`는 색상/뎁스 이미지를 받아
+카메라 마운트 오프셋(수평 70mm, 높이 100mm, 15도 하향 틸트)은 이제
+`army_manipulator_macro.xacro`의 `wrist_link -> cam_link` fixed joint가
+담당한다 — cam_link가 wrist_link에 붙어있어 팔이 움직이면 robot_state_publisher가
+자동으로 TF를 갱신한다. (이전 버전은 이 오프셋을 `base_link -> camera_link`
+static TF로 고정 publish했는데, 팔이 홈 자세를 벗어나면 실제 카메라 위치와
+어긋나는 버그였다 — 수정됨.)
+
+`realsense_bringup.launch.py`는 이제 `cam_link`(URDF 마운트 프레임)와
+`camera_link`(realsense2_camera 드라이버 루트 프레임)를 identity로 연결하는
+static TF만 추가한다. `target_detector_node.py`는 색상/뎁스 이미지를 받아
 `/maru/target/point`로 3D 타겟 좌표를 publish하는 스켈레톤이며, 실제 검출
 알고리즘은 `detect_target_pixel()`에 TODO로 비어 있다.
 

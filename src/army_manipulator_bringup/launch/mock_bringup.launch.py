@@ -10,7 +10,12 @@ army_manipulator_description/urdf/army_manipulator_ros2_control.xacro 의
 usb_port/ifname/actuator_id 를 실제 배선에 맞게 수정할 것.
 """
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    RegisterEventHandler,
+    SetEnvironmentVariable,
+)
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
@@ -25,9 +30,20 @@ def generate_launch_description():
             default_value="true",
             description="mock_components/GenericSystem 사용 여부. false면 실제 하드웨어 플러그인 사용.",
         ),
+        DeclareLaunchArgument(
+            "use_mesh",
+            default_value="false",
+            description="true: meshes/{visual,collision}/*.stl 실형상 사용. false: primitive geometry.",
+        ),
     ]
 
     use_mock_hardware = LaunchConfiguration("use_mock_hardware")
+    use_mesh = LaunchConfiguration("use_mesh")
+
+    # move_group.launch.py / moveit_rviz.launch.py는 MoveItConfigsBuilder 경로 특성상
+    # DeclareLaunchArgument를 직접 받지 않고 ARMY_MANIPULATOR_USE_MESH 환경변수를 읽는다
+    # (해당 launch 파일 상단 주석 참고). 여기서 동일한 use_mesh 값을 환경변수로 전파한다.
+    set_use_mesh_env = SetEnvironmentVariable("ARMY_MANIPULATOR_USE_MESH", use_mesh)
 
     robot_description_content = Command(
         [
@@ -39,6 +55,9 @@ def generate_launch_description():
             " ",
             "use_mock_hardware:=",
             use_mock_hardware,
+            " ",
+            "use_mesh:=",
+            use_mesh,
         ]
     )
     robot_description = {"robot_description": robot_description_content}
@@ -118,6 +137,7 @@ def generate_launch_description():
     return LaunchDescription(
         declared_arguments
         + [
+            set_use_mesh_env,
             robot_state_publisher_node,
             ros2_control_node,
             joint_state_broadcaster_spawner,

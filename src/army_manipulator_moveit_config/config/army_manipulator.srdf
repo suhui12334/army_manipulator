@@ -28,21 +28,33 @@
     <joint name="wrist_joint" value="0"/>
   </group_state>
 
+  <!-- TODO(open/closed 방향): gripper_joint 실측 리미트가 [-2.5831, -1.0647]로
+       전부 음수라 기존 open=0, closed=2.0은 리미트 범위를 벗어난 값이었다(버그).
+       아래는 범위 내로 수정한 것이며, 실제로 어느 쪽 극값이 "완전 개방"인지는
+       하드웨어에서 방향 확인 후 필요시 open/closed를 서로 바꿀 것. -->
   <group_state name="open" group="gripper">
-    <joint name="gripper_joint" value="0"/>
+    <joint name="gripper_joint" value="-1.0647"/>
   </group_state>
   <group_state name="closed" group="gripper">
-    <joint name="gripper_joint" value="2.0"/>
+    <joint name="gripper_joint" value="-2.5831"/>
   </group_state>
 
   <!-- ========== End Effector ========== -->
   <end_effector name="gripper_ee" parent_link="wrist_link" group="gripper"/>
 
-  <!-- ========== Self-Collision 비활성화 (인접 링크) ========== -->
+  <!-- ========== Self-Collision 비활성화 (인접 링크) ==========
+       TODO: 아래 목록은 STL 통합에 맞춘 1차 수기 갱신본이다. Setup Assistant의
+       Self-Collisions 탭에서 자동 충돌 행렬 재계산을 반드시 돌려서 검증할 것
+       (특히 cam_link, rack_left/right_link는 실제 형상 기반 재계산 필요). -->
   <disable_collisions link1="base_link" link2="shoulder_pan_link" reason="Adjacent"/>
   <disable_collisions link1="shoulder_pan_link" link2="upper_arm_link" reason="Adjacent"/>
   <disable_collisions link1="upper_arm_link" link2="forearm_link" reason="Adjacent"/>
   <disable_collisions link1="forearm_link" link2="wrist_link" reason="Adjacent"/>
-  <disable_collisions link1="wrist_link" link2="gripper_base_link" reason="Adjacent"/>
+  <disable_collisions link1="wrist_link" link2="cam_link" reason="Adjacent"/>
+  <disable_collisions link1="wrist_link" link2="pinion_link" reason="Adjacent"/>
+  <disable_collisions link1="pinion_link" link2="rack_left_link" reason="Adjacent"/>
+  <disable_collisions link1="pinion_link" link2="rack_right_link" reason="Adjacent"/>
+  <disable_collisions link1="rack_left_link" link2="rack_right_link" reason="Adjacent"/>
+  <disable_collisions link1="forearm_link" link2="cam_link" reason="Adjacent"/>
 
 </robot>

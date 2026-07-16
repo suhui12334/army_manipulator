@@ -16,9 +16,15 @@ def generate_launch_description():
             default_value="true",
             description="ros2_control 하드웨어 인터페이스로 mock_components/GenericSystem 사용 여부",
         ),
+        DeclareLaunchArgument(
+            "use_mesh",
+            default_value="false",
+            description="true: meshes/{visual,collision}/*.stl 실형상 사용. false: primitive geometry.",
+        ),
     ]
 
     use_mock_hardware = LaunchConfiguration("use_mock_hardware")
+    use_mesh = LaunchConfiguration("use_mesh")
 
     robot_description_content = Command(
         [
@@ -30,6 +36,9 @@ def generate_launch_description():
             " ",
             "use_mock_hardware:=",
             use_mock_hardware,
+            " ",
+            "use_mesh:=",
+            use_mesh,
         ]
     )
     robot_description = {"robot_description": robot_description_content}

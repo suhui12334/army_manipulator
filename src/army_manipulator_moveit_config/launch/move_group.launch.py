@@ -7,6 +7,12 @@ army_manipulator_description 패키지 쪽에 있어서 명시적으로 지정�
 config/joint_limits.yaml, config/moveit_controllers.yaml,
 config/ompl_planning.yaml)는 army_manipulator_moveit_config/config 의
 기본 파일명과 일치하므로 자동으로 로드된다.
+
+use_mesh: STL 실형상 사용 여부. 환경변수 ARMY_MANIPULATOR_USE_MESH=true 로
+켤 수 있다(MoveItConfigsBuilder 경로는 DeclareLaunchArgument 조합을 그대로
+받지 않으므로 launch 인자 대신 환경변수를 사용). collision mesh는 현재
+visual과 동일한 원본 STL을 그대로 쓰고 있어 충돌 검사가 무거울 수 있음 —
+추후 convex decomposition으로 단순화 권장(TODO).
 """
 import os
 
@@ -21,10 +27,14 @@ def generate_launch_description():
         "urdf",
         "army_manipulator.urdf.xacro",
     )
+    use_mesh = os.environ.get("ARMY_MANIPULATOR_USE_MESH", "false")
 
     moveit_config = (
         MoveItConfigsBuilder("army_manipulator", package_name="army_manipulator_moveit_config")
-        .robot_description(file_path=urdf_xacro_path, mappings={"use_mock_hardware": "true"})
+        .robot_description(
+            file_path=urdf_xacro_path,
+            mappings={"use_mock_hardware": "true", "use_mesh": use_mesh},
+        )
         .to_moveit_configs()
     )
     return generate_move_group_launch(moveit_config)
