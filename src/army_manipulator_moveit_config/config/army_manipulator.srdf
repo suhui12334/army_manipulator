@@ -19,6 +19,8 @@
   </group>
 
   <!-- ========== Group States ========== -->
+  <!-- TODO(home-pose): 전체 조인트 기본자세(홈 포지션)는 CATIA 확인 후 사용자가
+       제공할 예정. 지금은 전부 0인 placeholder. -->
   <group_state name="home" group="arm">
     <joint name="base_rotate_joint" value="0"/>
     <joint name="shoulder_lift_joint" value="0"/>

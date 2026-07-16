@@ -1,0 +1,35 @@
+# MARU 팔 관절별 영점(zero-offset) 보정 설정
+# ============================================================
+# 보정식 (전체 파이프라인에서 공통으로 적용):
+#   actual_joint_angle = raw_encoder_angle - zero_offset
+#   actual_limit       = raw_limit        - zero_offset
+#
+# - raw_max/raw_min : 실측 인코더 원시값 기준 리미트 (5° 안전마진 이미 적용됨, rad)
+# - zero_offset     : 관절별 독립 상수. 홈 자세(actual=0)에서 인코더가 실제로
+#                      몇 rad을 읽는지 실측하기 전까지는 0으로 둔다(placeholder).
+#
+# TODO(zero-offset): 아래 5개 zero_offset은 전부 실측 전 placeholder(0.0)다.
+# 실측 후 이 파일의 zero_offset 값만 갱신하면 URDF(xacro property)와 IK 노드
+# (joint_calibration.py) 양쪽에 동일하게 반영된다. 다른 파일은 손댈 필요 없음.
+# ============================================================
+joints:
+  base_rotate_joint:
+    raw_max: 1.4137
+    raw_min: 0.1047
+    zero_offset: 0.0  # TODO(zero-offset): 실측 필요
+  shoulder_lift_joint:
+    raw_max: 1.2741
+    raw_min: -0.05236
+    zero_offset: 0.0  # TODO(zero-offset): 실측 필요
+  elbow_joint:
+    raw_max: 0.8552
+    raw_min: -0.3491
+    zero_offset: 0.0  # TODO(zero-offset): 실측 필요
+  wrist_joint:
+    raw_max: 4.1713
+    raw_min: 1.5708
+    zero_offset: 0.0  # TODO(zero-offset): 실측 필요
+  gripper_joint:
+    raw_max: -1.0647
+    raw_min: -2.5831
+    zero_offset: 0.0  # TODO(zero-offset): 실측 필요

@@ -96,8 +96,8 @@
         <hardware>
           <plugin>myactuator_rmd_hardware/MyActuatorRmdHardwareInterface</plugin>
           <!-- TODO: 실제 CAN 인터페이스/ID/토크상수로 교체 -->
-          <param name="ifname">can0</param>
-          <param name="actuator_id">2</param>
+          <param name="ifname">can1</param>
+          <param name="actuator_id">4</param>
           <param name="torque_constant">1.0</param>
         </hardware>
         <joint name="${prefix}shoulder_lift_joint">
@@ -112,8 +112,8 @@
       <ros2_control name="${prefix}elbow_actuator" type="actuator">
         <hardware>
           <plugin>myactuator_rmd_hardware/MyActuatorRmdHardwareInterface</plugin>
-          <param name="ifname">can0</param>
-          <param name="actuator_id">3</param>
+          <param name="ifname">can1</param>
+          <param name="actuator_id">5</param>
           <param name="torque_constant">1.0</param>
         </hardware>
         <joint name="${prefix}elbow_joint">
@@ -128,8 +128,8 @@
       <ros2_control name="${prefix}wrist_actuator" type="actuator">
         <hardware>
           <plugin>myactuator_rmd_hardware/MyActuatorRmdHardwareInterface</plugin>
-          <param name="ifname">can0</param>
-          <param name="actuator_id">4</param>
+          <param name="ifname">can1</param>
+          <param name="actuator_id">6</param>
           <param name="torque_constant">1.0</param>
         </hardware>
         <joint name="${prefix}wrist_joint">
