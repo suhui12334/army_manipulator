@@ -8,7 +8,7 @@
 
   use_mock_hardware=false (팀원 Hardware Interface 완성 후)
     -> 버스별로 분리된 실제 플러그인을 사용:
-       - base_rotate_joint  : dynamixel_hardware/DynamixelHardware   (RS-485, XH540-W270-T)
+       - base_joint  : dynamixel_hardware/DynamixelHardware   (RS-485, XH540-W270-T)
        - gripper_joint      : dynamixel_hardware/DynamixelHardware   (TTL,   MX-106T)
        - shoulder/elbow/wrist : myactuator_rmd_hardware/MyActuatorRmdHardwareInterface (CAN, RMD-X8/X6/X4)
 
@@ -28,7 +28,7 @@
         <hardware>
           <plugin>mock_components/GenericSystem</plugin>
         </hardware>
-        <joint name="${prefix}base_rotate_joint">
+        <joint name="${prefix}base_joint">
           <command_interface name="position"/>
           <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
           <state_interface name="velocity"/>
@@ -53,21 +53,38 @@
           <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
           <state_interface name="velocity"/>
         </joint>
+        <!-- rack_left_joint/rack_right_joint는 URDF에서 gripper_joint를 <mimic>하는
+             조인트다. 실측 결과 GenericSystem은 URDF의 <mimic> 태그를 자동으로
+             읽지 않고, <ros2_control><joint> 블록 안에 <param name="mimic">/
+             <param name="multiplier">를 직접 선언해야 그 값을 보고 gripper_joint
+             상태로부터 자동 계산해준다 (state_interface만 등록했을 때는 0.0으로
+             고정된 채 안 움직이는 것을 확인함). -->
+        <joint name="${prefix}rack_left_joint">
+          <param name="mimic">${prefix}gripper_joint</param>
+          <param name="multiplier">${pinion_pitch_radius}</param>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}rack_right_joint">
+          <param name="mimic">${prefix}gripper_joint</param>
+          <param name="multiplier">${-pinion_pitch_radius}</param>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
       </ros2_control>
 
     </xacro:if>
 
     <xacro:unless value="${use_mock_hardware}">
 
-      <!-- ===== base_rotate_joint : Dynamixel XH540-W270-T (RS-485) ===== -->
+      <!-- ===== base_joint : Dynamixel XH540-W270-T (TTL) ===== -->
       <ros2_control name="${prefix}base_bus" type="system">
         <hardware>
           <plugin>dynamixel_hardware/DynamixelHardware</plugin>
-          <!-- TODO: 실제 U2D2/RS-485 포트로 교체 -->
           <param name="usb_port">/dev/ttyUSB0</param>
           <param name="baud_rate">1000000</param>
         </hardware>
-        <joint name="${prefix}base_rotate_joint">
+        <joint name="${prefix}base_joint">
           <param name="id">1</param>
           <command_interface name="position"/>
           <state_interface name="position"/>
@@ -96,7 +113,7 @@
         <hardware>
           <plugin>myactuator_rmd_hardware/MyActuatorRmdHardwareInterface</plugin>
           <!-- TODO: 실제 CAN 인터페이스/ID/토크상수로 교체 -->
-          <param name="ifname">can1</param>
+          <param name="ifname">can_arm</param>
           <param name="actuator_id">4</param>
           <param name="torque_constant">1.0</param>
         </hardware>
@@ -112,7 +129,7 @@
       <ros2_control name="${prefix}elbow_actuator" type="actuator">
         <hardware>
           <plugin>myactuator_rmd_hardware/MyActuatorRmdHardwareInterface</plugin>
-          <param name="ifname">can1</param>
+          <param name="ifname">can_arm</param>
           <param name="actuator_id">5</param>
           <param name="torque_constant">1.0</param>
         </hardware>
@@ -128,7 +145,7 @@
       <ros2_control name="${prefix}wrist_actuator" type="actuator">
         <hardware>
           <plugin>myactuator_rmd_hardware/MyActuatorRmdHardwareInterface</plugin>
-          <param name="ifname">can1</param>
+          <param name="ifname">can_arm</param>
           <param name="actuator_id">6</param>
           <param name="torque_constant">1.0</param>
         </hardware>

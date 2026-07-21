@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="army_manipulator">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+
+    <!-- Import army_manipulator urdf file -->
+    <xacro:include filename="$(find army_manipulator_description)/urdf/army_manipulator.urdf.xacro" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="army_manipulator.ros2_control.xacro" />
+
+
+    <xacro:army_manipulator_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
+
+</robot>

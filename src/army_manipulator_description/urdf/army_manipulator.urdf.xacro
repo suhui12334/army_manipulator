@@ -8,10 +8,7 @@
   <!-- true: 실제 CATIA mesh(STL) 참조. false(기본값): primitive geometry.
        meshes/{visual,collision}/*.stl 이 아직 없으므로 기본은 false로 두고,
        STL 파일을 받으면 use_mesh:=true 로 켜서 확인할 것. -->
-  <xacro:arg name="use_mesh" default="false"/>
-
-  <!-- 구동부 상면 높이: world -> base_link -->
-  <xacro:property name="base_height" value="0.350"/>
+  <xacro:arg name="use_mesh" default="true"/>
 
   <xacro:include filename="$(find army_manipulator_description)/urdf/materials.xacro"/>
   <xacro:include filename="$(find army_manipulator_description)/urdf/army_manipulator_ros2_control.xacro"/>
@@ -19,8 +16,6 @@
 
   <link name="world"/>
 
-  <xacro:army_manipulator prefix="" parent="world" use_mock_hardware="$(arg use_mock_hardware)" use_mesh="$(arg use_mesh)">
-    <origin xyz="0 0 ${base_height}" rpy="0 0 0"/>
-  </xacro:army_manipulator>
+  <xacro:army_manipulator prefix="" parent="world" use_mock_hardware="$(arg use_mock_hardware)" use_mesh="$(arg use_mesh)"/>
 
 </robot>

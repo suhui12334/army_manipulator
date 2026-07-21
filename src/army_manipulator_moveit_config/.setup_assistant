@@ -1,11 +1,25 @@
 moveit_setup_assistant_config:
-  URDF:
+  urdf:
     package: army_manipulator_description
     relative_path: urdf/army_manipulator.urdf.xacro
-    xacro_args: use_mock_hardware:=true
-  SRDF:
+  srdf:
     relative_path: config/army_manipulator.srdf
-  CONFIG:
-    author_name: suhui
+  package_settings:
+    author_name: shu
     author_email: suhui12334@gmail.com
-    generated_timestamp: 1783958400
+    generated_timestamp: 1784447379
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity

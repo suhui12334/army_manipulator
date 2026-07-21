@@ -22,7 +22,7 @@ def calibration() -> JointCalibration:
 
 def test_zero_offset_defaults_to_zero(calibration: JointCalibration):
     for joint_name in (
-        "base_rotate_joint",
+        "base_joint",
         "shoulder_lift_joint",
         "elbow_joint",
         "wrist_joint",
@@ -38,16 +38,16 @@ def test_raw_actual_roundtrip(calibration: JointCalibration):
 
 
 def test_actual_limits_match_raw_limits_when_offset_is_zero(calibration: JointCalibration):
-    assert calibration.actual_limits("base_rotate_joint") == pytest.approx((0.1047, 1.4137))
-    assert calibration.actual_limits("shoulder_lift_joint") == pytest.approx((-0.05236, 1.2741))
-    assert calibration.actual_limits("elbow_joint") == pytest.approx((-0.3491, 0.8552))
-    assert calibration.actual_limits("wrist_joint") == pytest.approx((1.5708, 4.1713))
-    assert calibration.actual_limits("gripper_joint") == pytest.approx((-2.5831, -1.0647))
+    assert calibration.actual_limits("base_joint") == pytest.approx((-2.6180, 2.6180))
+    assert calibration.actual_limits("shoulder_lift_joint") == pytest.approx((-2.6180, 2.6180))
+    assert calibration.actual_limits("elbow_joint") == pytest.approx((-2.6180, 2.6180))
+    assert calibration.actual_limits("wrist_joint") == pytest.approx((-2.6180, 2.6180))
+    assert calibration.actual_limits("gripper_joint") == pytest.approx((-2.6180, 2.6180))
 
 
 def test_clamp_to_actual_limit(calibration: JointCalibration):
-    assert calibration.clamp_to_actual_limit("elbow_joint", 10.0) == pytest.approx(0.8552)
-    assert calibration.clamp_to_actual_limit("elbow_joint", -10.0) == pytest.approx(-0.3491)
+    assert calibration.clamp_to_actual_limit("elbow_joint", 10.0) == pytest.approx(2.6180)
+    assert calibration.clamp_to_actual_limit("elbow_joint", -10.0) == pytest.approx(-2.6180)
     assert calibration.clamp_to_actual_limit("elbow_joint", 0.0) == pytest.approx(0.0)
 
 

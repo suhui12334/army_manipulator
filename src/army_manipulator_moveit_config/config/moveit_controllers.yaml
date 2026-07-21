@@ -1,6 +1,11 @@
-# MoveIt2 그룹 <-> ros2_control 컨트롤러 매핑.
-# arm_controller / gripper_controller 는
-# army_manipulator_bringup/config/ros2_controllers.yaml 에서 스폰된다.
+# MoveIt uses this configuration for controller management.
+# [수정] Setup Assistant 마법사에서 컨트롤러 이름을 "shu"로 입력하고 joints에
+# gripper_joint를 중복으로 넣은 채 생성되어 있었다 - army_manipulator_bringup/
+# config/ros2_controllers.yaml에 실제로 떠 있는 arm_controller/gripper_controller
+# 이름과도 안 맞아서 move_group이 트래젝토리를 보낼 컨트롤러를 못 찾는 상태였다.
+# 실제 컨트롤러 구성과 일치시켜 복원했다.
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
 moveit_simple_controller_manager:
   controller_names:
     - arm_controller
@@ -11,7 +16,7 @@ moveit_simple_controller_manager:
     type: FollowJointTrajectory
     default: true
     joints:
-      - base_rotate_joint
+      - base_joint
       - shoulder_lift_joint
       - elbow_joint
       - wrist_joint
@@ -22,5 +27,3 @@ moveit_simple_controller_manager:
     default: true
     joints:
       - gripper_joint
-
-moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager

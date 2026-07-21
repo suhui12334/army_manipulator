@@ -12,6 +12,7 @@ install(
   PROGRAMS
     scripts/maru_ik_node.py
     scripts/target_detector_node.py
+    scripts/fake_target_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

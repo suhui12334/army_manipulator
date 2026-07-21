@@ -20,6 +20,7 @@ from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -32,7 +33,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "use_mesh",
-            default_value="false",
+            default_value="true",
             description="true: meshes/{visual,collision}/*.stl 실형상 사용. false: primitive geometry.",
         ),
     ]
@@ -60,7 +61,9 @@ def generate_launch_description():
             use_mesh,
         ]
     )
-    robot_description = {"robot_description": robot_description_content}
+    robot_description = {
+        "robot_description": ParameterValue(robot_description_content, value_type=str)
+    }
 
     ros2_controllers_config = PathJoinSubstitution(
         [FindPackageShare("army_manipulator_bringup"), "config", "ros2_controllers.yaml"]

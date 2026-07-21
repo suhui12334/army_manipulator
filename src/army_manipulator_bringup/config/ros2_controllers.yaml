@@ -14,7 +14,7 @@ controller_manager:
 arm_controller:
   ros__parameters:
     joints:
-      - base_rotate_joint
+      - base_joint
       - shoulder_lift_joint
       - elbow_joint
       - wrist_joint

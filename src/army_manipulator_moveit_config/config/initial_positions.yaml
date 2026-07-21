@@ -1,0 +1,8 @@
+# Default initial positions for army_manipulator's ros2_control fake system
+
+initial_positions:
+  base_joint: 0
+  elbow_joint: 0
+  gripper_joint: 0
+  shoulder_lift_joint: 0
+  wrist_joint: 0
