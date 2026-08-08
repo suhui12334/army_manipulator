@@ -80,13 +80,13 @@ ros2 launch army_manipulator_description display.launch.py use_mesh:=true
 | STL 파일 | 매핑된 링크 |
 |---|---|
 | `base_link.stl` | `base_link` |
-| `base_actuator.stl` | `shoulder_pan_link` (XH540 바디) |
-| `shoulder_link.stl` | `upper_arm_link` (RMD-X8-120 플랜지+L1 튜브+RMD-X6-60 케이스) |
-| `elbow_link.stl` | `forearm_link` (RMD-X6-60 플랜지+L2 튜브+RMD-X4-36 케이스) |
+| `base_actuator.stl` | `base_actuator` (XH540 바디) |
+| `shoulder_link.stl` | `shoulder_link` (RMD-X8-120 플랜지+L1 튜브+RMD-X6-60 케이스) |
+| `elbow_link.stl` | `elbow_link` (RMD-X6-60 플랜지+L2 튜브+RMD-X4-36 케이스) |
 | `wrist_link.stl` | `wrist_link` |
 | `cam_link.stl` | `cam_link` (wrist_link에 fixed) |
-| `pinion_gear.stl` | `pinion_link` (구 gripper_base_link 대체, gripper_joint로 구동) |
-| `lack_left.stl` / `lack_right.stl` | `rack_left_link` / `rack_right_link` (prismatic mimic) |
+| `pinion_gear.stl` | `pinion_gear` (구 gripper_base_link 대체, gripper_joint로 구동) |
+| `rack_left.stl` / `rack_right.stl` | `rack_left_link` / `rack_right_link` (prismatic mimic) |
 
 기본값은 `false`라서 STL 매핑에 문제가 있어도 `use_mesh:=false`(기본)로 돌아가면
 기존 primitive geometry 데모는 그대로 동작한다.
