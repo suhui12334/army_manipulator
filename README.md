@@ -115,23 +115,22 @@ ros2 launch army_manipulator_bringup realsense_bringup.launch.py
 static TF로 고정 publish했는데, 팔이 홈 자세를 벗어나면 실제 카메라 위치와
 어긋나는 버그였다 — 수정됨.)
 
-`realsense_bringup.launch.py`는 이제 `cam_link`(URDF 마운트 프레임)와
-`camera_link`(realsense2_camera 드라이버 루트 프레임)를 identity로 연결하는
-static TF만 추가한다. `target_detector_node.py`는 색상/뎁스 이미지를 받아
-`/maru/target/point`로 3D 타겟 좌표를 publish하는 스켈레톤이며, 실제 검출
-알고리즘은 `detect_target_pixel()`에 TODO로 비어 있다.
+`realsense_bringup.launch.py`는 `cam_link`(URDF 마운트 프레임)와
+`camera_link`(realsense2_camera 드라이버 루트 프레임)를 연결한다.
+`target_detector_node.py`는 D455의 aligned color/depth에서 YOLO 클래스
+`supplybox`의 중심 3D 점을 `/arm/target_point`로 publish한다.
 
-## RMD 명령 경로
+`maru_ik_node`는 이 점을 반드시 TF로 `base_link`에 변환한 후 MoveIt의
+`move_group` action에 pre-grasp, 하강, 파지, 리프트 목표를 보낸다. 생성된
+trajectory는 `arm_controller`/`gripper_controller`와 ros2_control을 거쳐
+RMD CAN 및 Dynamixel 명령으로 전송된다. 기본값은 물자를 쥔 채 리프트 자세에
+유지하므로 이동 플랫폼이 운반할 수 있다.
 
-`maru_ik_node`는 IK로 구한 목표 자세를 `/joint_command_mux`
-(`Float64MultiArray`)로 publish하는데, 이 워크스페이스에는 아직 그 토픽을
-받아서 teleop/자동 명령을 중재하는 dxl_ee의 mux 노드가 통합되어 있지 않다.
-그래서 `direct_control` 파라미터(기본 `true`) 동안은 IK 노드가 같은 해를
-`arm_controller`/`gripper_controller`의 `FollowJointTrajectory` 액션으로도
-직접 보내서, ros2_control(RMD는 `myactuator_rmd_hardware`, 베이스/그리퍼는
-`dynamixel_hardware`)까지 명령이 실제로 전달되게 한다. 이 경로는 임시
-우회이므로, dxl_ee의 joint_command_mux 노드가 붙으면
-`direct_control:=false`로 끄고 제거할 것.
+실물 전에는 다음 항목을 보정해야 한다.
+
+- D455 렌즈 중심과 `cam_link` 사이의 6D 오프셋
+- `grasp_offset_{x,y,z}`: 기본 z=-47.5 mm는 95 mm 상면 검출 기준의 초기값
+- `pregrasp_offset_z`, `approach_pitch`, 그리퍼 닫힘 위치 및 RMD 한계값
 
 ## 진행 상황
 
@@ -139,14 +138,13 @@ static TF만 추가한다. `target_detector_node.py`는 색상/뎁스 이미지�
 - [x] SRDF/MoveIt2 설정 초안
 - [x] mock_hardware bringup launch
 - [x] mesh 참조 구조 스캐폴딩 (`use_mesh` 인자, STL은 추후 추가)
-- [x] maru_ik_node: 접근각/yaw/IK 서비스 호출 + mux 부재 대응 direct_control 폴백
-- [x] RealSense 뎁스카메라 launch + 타겟 검출 노드 스켈레톤
+- [x] D455 aligned depth + YOLO `supplybox` 3D 좌표 추출
+- [x] TF 기반 목표 변환, MoveIt 계획, ros2_control CAN/TTL 실행 경로
 - [ ] 실제 STL mesh 파일 반영 후 `use_mesh:=true`로 전환, Self-Collision 재계산
 - [ ] base pan(θ0) 조인트 리밋 / 전체 홈 포지션 확정 (CATIA 확인 후)
-- [ ] 타겟 검출 알고리즘 구현 (`detect_target_pixel`)
+- [ ] D455 hand-eye 및 grasp offset 실측 보정
 - [ ] RMD 모터 실측 후 acceleration limit / torque_constant 보정
 - [ ] 팀원 Hardware Interface 완성 후 실제 하드웨어 전환
-- [ ] dxl_ee joint_command_mux 통합 후 IK 노드 direct_control 경로 제거
 
 ## 참고
 

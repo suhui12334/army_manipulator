@@ -3,7 +3,7 @@
 
 실물 뎁스카메라 없이도 depth_camera_ik_bringup.launch.py의 다운스트림
 (maru_ik_node의 MoveIt IK 역산 -> arm_controller/gripper_controller 실행)을
-검증할 수 있도록, target_detector_node가 하는 일(카메라 좌표 -> /maru/target/point
+검증할 수 있도록, target_detector_node가 하는 일(카메라 좌표 -> /arm/target_point
 publish)을 파라미터로 받은 고정 좌표로 흉내낸다.
 
 launch에서 sim_target:=true 로 켜면 realsense_bringup.launch.py +
@@ -21,7 +21,7 @@ class FakeTargetPublisher(Node):
     def __init__(self):
         super().__init__("fake_target_publisher")
 
-        self.declare_parameter("target_topic", "/maru/target/point")
+        self.declare_parameter("target_topic", "/arm/target_point")
         self.declare_parameter("frame_id", "")
         # 기본값: FK로 실측 검증된 도달 가능 지점(base_joint=0, shoulder=elbow=
         # wrist=-0.4rad 벤드에서 나오는 wrist_link 위치). 다른 좌표를 던지고

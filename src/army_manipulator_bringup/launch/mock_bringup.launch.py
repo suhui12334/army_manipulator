@@ -128,9 +128,9 @@ def generate_launch_description():
         )
     )
 
-    # 카메라 타겟 -> IK -> arm_controller/gripper_controller 로 이어지는 노드.
-    # /joint_command_mux 에는 아직 구독자가 없으므로(dxl_ee mux 미통합),
-    # 기본적으로 direct_control=true 로 FollowJointTrajectory를 직접 보낸다.
+    # 카메라 타겟 -> TF 변환 -> MoveIt move_group -> arm/gripper_controller로 이어지는 노드.
+    # move_group이 만든 trajectory는 ros2_control 하드웨어 인터페이스를 통해
+    # RMD(CAN)와 Dynamixel에 전달된다.
     maru_ik_node = Node(
         package="army_manipulator_bringup",
         executable="maru_ik_node.py",

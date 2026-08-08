@@ -1,0 +1,8 @@
+# target_detector_node.py의 YOLO 검출에 필요한 pip 의존성 (rosdep 대상 아님).
+# ROS Humble의 cv_bridge/matplotlib 바이너리는 NumPy 1.x ABI로 빌드되어 있어
+# NumPy 2.x와 함께 로드하면 `_ARRAY_API not found`로 즉시 종료한다.
+# 설치: python3 -m pip install --user -r requirements.txt
+numpy>=1.24,<2
+ultralytics
+# 기본 모델은 OpenVINO IR(xml/bin)이므로 CPU 추론 런타임도 필요하다.
+openvino

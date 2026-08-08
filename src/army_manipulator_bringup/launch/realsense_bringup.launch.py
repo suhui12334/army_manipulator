@@ -1,4 +1,4 @@
-"""RealSense D435i 뎁스카메라 기동 + TF 연결.
+"""RealSense D455 뎁스카메라 기동 + TF 연결.
 
 카메라 마운트 오프셋(70mm 수평 / 100mm 높이 / 15도 하향 틸트)은 URDF의
 wrist_link -> cam_link fixed joint(army_manipulator_macro.xacro)에서 관리한다.
@@ -10,11 +10,11 @@ TODO(fixed-bug): 예전에는 이 launch 파일이 base_link -> camera_link 로
 달려 팔 모션에 따라 움직이므로, base_link 기준 고정 TF는 팔이 홈 자세를 벗어나는
 순간부터 실제 카메라 위치와 어긋나는 버그였다. 이제는 URDF가 그 오프셋을
 담당하고, 여기서는 URDF의 cam_link(마운트 브라켓 원점)와 realsense2_camera
-드라이버의 루트 프레임(camera_link)만 identity(또는 D435i 렌즈-브라켓 간
+드라이버의 루트 프레임(camera_link)만 identity(또는 D455 렌즈-브라켓 간
 실측 미세 오프셋)로 연결한다.
 
 TODO(lens-offset): 아래 static TF는 identity placeholder다. cam_link.stl
-원점과 D435i 렌즈 중심이 정확히 일치하지 않으면, 실측 후 x/y/z, roll/pitch/yaw
+원점과 D455 렌즈 중심이 정확히 일치하지 않으면, 실측 후 x/y/z, roll/pitch/yaw
 값을 채울 것.
 
 RealSense 노드는 aligned_depth 스트림(depth를 color 프레임에 정렬)을 켜서
