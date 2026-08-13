@@ -1,0 +1,143 @@
+<?xml version="1.0"?>
+<!--
+  army_manipulator ros2_control definition (revision 2)
+
+  The controlled chain is base -> shoulder -> elbow -> wrist, plus the
+  pinion-driven gripper.  rack_left_joint and rack_right_joint are passive
+  mimic joints: their metre displacement is the gripper angle multiplied by
+  the pinion pitch radius.  This follows the rack-and-pinion relationship in
+  robot_urdf_parameters.md.docx and the joints defined in
+  army_manipulator_macro.xacro.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="army_manipulator_ros2_control2"
+               params="prefix
+                       use_mock_hardware:=true
+                       pinion_pitch_radius:=0.015
+                       dxl_port_name:=/dev/ttyUSB0
+                       dxl_baud_rate:=57600
+                       rmd_ifname:=can_arm
+                       rmd_timeout:=100">
+
+    <!-- Default configuration for RViz/MoveIt2.  The two rack joints expose
+         state only because their positions are derived from gripper_joint. -->
+    <xacro:if value="${use_mock_hardware}">
+      <ros2_control name="${prefix}army_manipulator_system" type="system">
+        <hardware>
+          <plugin>mock_components/GenericSystem</plugin>
+        </hardware>
+
+        <joint name="${prefix}base_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}shoulder_lift_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}elbow_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}wrist_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}gripper_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}rack_left_joint">
+          <param name="mimic">${prefix}gripper_joint</param>
+          <param name="multiplier">${pinion_pitch_radius}</param>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+        <joint name="${prefix}rack_right_joint">
+          <param name="mimic">${prefix}gripper_joint</param>
+          <param name="multiplier">${-pinion_pitch_radius}</param>
+          <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+          <state_interface name="velocity"/>
+        </joint>
+      </ros2_control>
+    </xacro:if>
+
+    <!-- Hardware values below are retained from the existing control file.
+         Confirm motor limits/current tuning against the installed hardware
+         before setting use_mock_hardware:=false. -->
+    <xacro:unless value="${use_mock_hardware}">
+      <ros2_control name="${prefix}dynamixel_system" type="system">
+        <hardware>
+          <plugin>dynamixel_hardware_interface/DynamixelHardware</plugin>
+          <param name="port_name">${dxl_port_name}</param>
+          <param name="baud_rate">${dxl_baud_rate}</param>
+          <param name="dynamixel_model_folder">/param/dxl_model</param>
+          <param name="number_of_joints">2</param>
+          <param name="number_of_transmissions">2</param>
+          <param name="disable_torque_at_init">true</param>
+          <param name="error_timeout_ms">1000</param>
+          <param name="transmission_to_joint_matrix">1,0,0,1</param>
+          <param name="joint_to_transmission_matrix">1,0,0,1</param>
+        </hardware>
+        <!-- Matrix ordering: gripper (Dynamixel ID 4), then base (ID 0). -->
+        <joint name="${prefix}gripper_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/>
+        </joint>
+        <joint name="${prefix}base_joint">
+          <command_interface name="position"/>
+          <state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/>
+        </joint>
+        <gpio name="dxl_gripper">
+          <param name="type">dxl</param><param name="ID">4</param>
+          <command_interface name="Goal Position"/>
+          <state_interface name="Present Position"/><state_interface name="Present Velocity"/>
+          <state_interface name="Present Current"/><state_interface name="Torque Enable"/>
+          <state_interface name="Hardware Error Status"/><param name="Return Delay Time">0</param>
+        </gpio>
+        <gpio name="dxl_base">
+          <param name="type">dxl</param><param name="ID">0</param>
+          <command_interface name="Goal Position"/>
+          <state_interface name="Present Position"/><state_interface name="Present Velocity"/>
+          <state_interface name="Present Current"/><state_interface name="Torque Enable"/>
+          <state_interface name="Hardware Error Status"/><param name="Return Delay Time">0</param>
+        </gpio>
+      </ros2_control>
+
+      <xacro:macro name="rmd_actuator" params="name joint actuator_id max_velocity">
+        <ros2_control name="${prefix}${name}_actuator" type="actuator">
+          <hardware>
+            <plugin>rmd_hardware_interface/MyActuatorRmdHardwareInterface</plugin>
+            <param name="ifname">${rmd_ifname}</param>
+            <param name="actuator_id">${actuator_id}</param>
+            <param name="torque_constant">1.0</param>
+            <param name="max_velocity">${max_velocity}</param>
+            <param name="velocity_alpha">0.1</param><param name="effort_alpha">0.1</param>
+            <param name="software_current_limit">10.0</param>
+            <param name="current_release_threshold">8.0</param>
+            <param name="current_limit_duration_ms">50</param>
+            <param name="current_retreat_velocity">0.1</param>
+            <param name="current_max_retreat_distance">0.174533</param>
+            <param name="timeout">${rmd_timeout}</param>
+          </hardware>
+          <joint name="${prefix}${joint}">
+            <command_interface name="position"/><command_interface name="velocity"/><command_interface name="effort"/>
+            <state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/>
+          </joint>
+        </ros2_control>
+      </xacro:macro>
+
+      <!-- RMD-X8-120 (CAN ID 4), RMD-X6-60 (ID 5), RMD-X4-36 (ID 6). -->
+      <xacro:rmd_actuator name="shoulder" joint="shoulder_lift_joint" actuator_id="4" max_velocity="1.047"/>
+      <xacro:rmd_actuator name="elbow" joint="elbow_joint" actuator_id="5" max_velocity="1.571"/>
+      <xacro:rmd_actuator name="wrist" joint="wrist_joint" actuator_id="6" max_velocity="2.618"/>
+    </xacro:unless>
+
+  </xacro:macro>
+</robot>
