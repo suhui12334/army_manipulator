@@ -13,6 +13,7 @@ install(
     scripts/target_detector_node.py
     scripts/fake_target_publisher.py
     scripts/maru_ik_node.py
+    scripts/planned_encoder_trajectory.py
     scripts/tcp_trail_publisher.py
     scripts/joint_calibration.py
   DESTINATION lib/${PROJECT_NAME}

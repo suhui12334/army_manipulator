@@ -132,6 +132,71 @@ RMD CAN 및 Dynamixel 명령으로 전송된다. 기본값은 물자를 쥔 채 
 - `grasp_offset_{x,y,z}`: 기본 z=-47.5 mm는 95 mm 상면 검출 기준의 초기값
 - `pregrasp_offset_z`, `approach_pitch`, 그리퍼 닫힘 위치 및 RMD 한계값
 
+### 7) D455 → MoveIt → CAN 전체 실행
+
+실물 CAN 인터페이스를 실제 배선 bitrate에 맞춰 먼저 활성화한다.
+
+```bash
+sudo ip link set can_arm down
+sudo ip link set can_arm up type can bitrate 1000000
+```
+
+빌드 결과를 반영한 뒤 전체 파이프라인을 하나의 launch로 실행한다.
+
+```bash
+cd ~/army_manipulator
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install
+source ~/army_manipulator/install/setup.bash
+ros2 launch army_manipulator_bringup depth_camera_ik_bringup.launch.py \
+  use_mock_hardware:=false sim_target:=false
+```
+
+실행 데이터 경로는 다음과 같다.
+
+```text
+realsense2_camera → target_detector_node (/arm/target_point)
+  → TF(base_link) → maru_ik_node → move_group
+  → arm_controller/gripper_controller → ros2_control hardware plugin → CAN
+```
+
+위 launch가 기동하는 노드 순서와 역할은 다음과 같다.
+
+1. `realsense2_camera`: D455 color, aligned depth, camera TF를 발행한다.
+2. `target_detector_node`: YOLO `supplybox` 검출과 depth deprojection으로
+   `/arm/target_point`를 발행한다.
+3. `robot_state_publisher` + `joint_state_broadcaster`: 실제 엔코더 상태를
+   `/joint_states`와 `base_link → camera_color_optical_frame` TF 체인에 반영한다.
+4. `move_group`: IK, 관절 리밋, 충돌 검사, 경로 계획을 수행한다.
+5. `maru_ik_node`: 목표점을 `base_link`로 변환해 pre-grasp → 하강 → 3초 정지
+   → 그리퍼 닫기 → 리프트 시퀀스를 MoveIt에 요청한다.
+6. `arm_controller`/`gripper_controller`: MoveIt trajectory를 ros2_control
+   hardware interface에 넘기고, RMD(CAN)·Dynamixel(TTL) 명령이 송신된다.
+7. `planned_encoder_trajectory`: 계획 waypoint를 raw encoder-radian으로 변환해
+   기록 토픽에 발행한다.
+
+다른 터미널에서 아래 상태를 확인한다.
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/army_manipulator/install/setup.bash
+
+ros2 control list_controllers
+ros2 topic echo /arm/target_point
+ros2 run tf2_ros tf2_echo base_link camera_color_optical_frame
+ros2 topic echo --once /arm/planned_encoder_trajectory
+```
+
+`joint_state_broadcaster`, `arm_controller`, `gripper_controller`는 모두
+`active`여야 한다. 첫 실물 시험은 반드시 `use_mock_hardware:=true`로 같은
+launch와 목표점 변환을 먼저 검증한 뒤, 팔 주변을 비운 상태에서 실제 CAN으로
+전환한다.
+
+이 토픽은 기록·검증용이다. CAN 프레임은 이 토픽에서 직접 보내지 않고,
+`arm_controller`의 단일 명령 경로만 RMD hardware interface를 통해 송신한다.
+true encoder tick은 모터별 encoder CPR·감속비·CAN 프로토콜이 확정된 뒤
+hardware plugin에서 radian 명령을 변환해야 한다.
+
 ## 진행 상황
 
 - [x] URDF -> XACRO 변환 (mock/real ros2_control 분기)

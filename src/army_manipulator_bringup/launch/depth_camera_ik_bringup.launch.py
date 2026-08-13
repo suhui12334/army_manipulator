@@ -19,6 +19,8 @@
   (PointStamped)로 publish
   -> maru_ik_node가 그 점을 구독해 MoveIt GetPositionIK로 관절해를 구하고
   arm_controller/gripper_controller로 전송
+  -> planned_encoder_trajectory가 MoveIt 경로를 raw encoder-radian 궤적으로
+  /arm/planned_encoder_trajectory에 관측용 발행
 
 detection: target_detector_node는 dolbotZ(9o9hz/dolbotZ)의 arm_pickup_node와
 동일한 패턴 — 사전 학습된 YOLO(ultralytics) 가중치로 color 이미지에서
@@ -221,6 +223,12 @@ def generate_launch_description():
         condition=IfCondition(sim_target),
     )
 
+    planned_encoder_trajectory_node = Node(
+        package="army_manipulator_bringup",
+        executable="planned_encoder_trajectory.py",
+        output="screen",
+    )
+
     return LaunchDescription(
         declared_arguments
         + [
@@ -228,5 +236,6 @@ def generate_launch_description():
             depth_camera,
             target_detector_node,
             fake_target_publisher_node,
+            planned_encoder_trajectory_node,
         ]
     )
