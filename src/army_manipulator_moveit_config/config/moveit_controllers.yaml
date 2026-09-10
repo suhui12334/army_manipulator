@@ -4,6 +4,20 @@
 # config/ros2_controllers.yaml에 실제로 떠 있는 arm_controller/gripper_controller
 # 이름과도 안 맞아서 move_group이 트래젝토리를 보낼 컨트롤러를 못 찾는 상태였다.
 # 실제 컨트롤러 구성과 일치시켜 복원했다.
+
+# [추가, 2026-08-31] MoveItConfigsBuilder.trajectory_execution()이 file_path
+# 없이 호출되면(move_group.launch.py) config/*_controllers.yaml(이 파일)을
+# trajectory_execution 파라미터 소스로 자동 사용한다 - 그래서 이 최상위
+# 키들이 여기 들어간다.
+# 실기(use_mock_hardware:=false)에서 "Invalid Trajectory: start point
+# deviates from current robot state more than 0.01" (예: shoulder_joint
+# expected -0.4538, current -0.4363 - 약 1° 차이)로 home_pose 2단계
+# 실행이 계속 STATUS_ABORTED 되는 게 확인됨 - 기본 allowed_start_tolerance
+# (0.01rad≈0.57°)가 실기 백래시/settling 오차보다 빡빡해서 생기는 문제.
+# 0.05rad(≈2.9°)로 완화 - 실측 오차(~1°)에 2배 이상 여유.
+trajectory_execution:
+  allowed_start_tolerance: 0.05
+
 moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
 
 moveit_simple_controller_manager:
@@ -17,7 +31,7 @@ moveit_simple_controller_manager:
     default: true
     joints:
       - base_joint
-      - shoulder_lift_joint
+      - shoulder_joint
       - elbow_joint
       - wrist_joint
 

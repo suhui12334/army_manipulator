@@ -1,0 +1,37 @@
+# [추가, 2026-08-31] realsense2_camera의 색상/뎁스 발행 QoS를 SENSOR_DATA(=
+# BEST_EFFORT + 얕은 큐)로 강제한다. summer_supply.py/drive_supply_detector.py
+# 둘 다 rclpy.qos.qos_profile_sensor_data로 구독 중이라(BEST_EFFORT면 서로
+# 호환) 실제로는 기존 기본값(대체로 SYSTEM_DEFAULT=RELIABLE)에서도 연결은
+# 됐지만, RELIABLE 발행자는 네트워크가 불안정하면(무선 등) 재전송 때문에
+# 지연/버퍼링이 쌓일 수 있어 실시간 카메라 스트림에는 안 맞는다 - 프레임을
+# 늦게 받느니 버리는 SENSOR_DATA가 맞다.
+#
+# rs_launch.py는 이 파라미터들을 launch argument로 노출하지 않아서(고정된
+# configurable_parameters 목록에 없음) realsense_bringup.launch.py가
+# config_file 인자로 이 파일을 넘겨서 주입한다.
+# [갱신, 2026-09-05] realsense_bringup.launch.py가 이제 rs_launch.py를 거치지
+# 않고 드라이버 노드를 직접 띄우며, 이 파일을 yaml.safe_load로 읽어 dict로
+# Node(parameters=[...])에 넣는다 - flat 형식은 그대로 유지.
+#
+# 파라미터명 규칙(librealsense2_camera.so 문자열 덤프로 확인): <stream>_qos,
+# <stream>_info_qos. 우리가 실제로 쓰는 스트림만 지정 - infra/gyro/accel은
+# enable_*=false라 무의미.
+#
+# [주의] rs_launch.py의 yaml_to_dict()는 순수 yaml.safe_load()라 표준 ROS2
+# 파라미터 파일의 `/**: ros__parameters:` 래핑을 이해 못 한다(그건 launch_ros가
+# 파일 "경로"를 직접 받았을 때만 처리하는 문법인데, 여기선 이미 dict로 파싱된
+# 뒤 Node(parameters=[...])에 그대로 합쳐진다) - 그래서 이 파일은 최상위가
+# 바로 파라미터명이어야 한다(래핑 없이 flat).
+# [갱신, 2026-09-05] SENSOR_DATA(BEST_EFFORT) -> SYSTEM_DEFAULT(드라이버 기본값, RELIABLE)로 되돌림 - drive_cam.launch.py가 쓰는 값과 동일.
+# BEST_EFFORT 발행으로 바꾼 뒤 RELIABLE로 구독하는 소비자(util/
+# ros_compressed_to_rtsp.py -> MediaMTX -> UI, rqt_image_view)가 팔 카메라
+# 영상을 아예 못 받는 문제가 실기에서 확인됐다. DDS는 매칭된 쌍마다 reliability
+# 를 협상하므로 RELIABLE 발행자라도 BEST_EFFORT 구독자(summer_supply 등)에게는
+# 재전송 없이 보낸다 - 즉 발행자를 RELIABLE로 두는 게 모든 구독자와 호환되고,
+# 무선 지연 우려는 구독자 쪽 QoS로 해결하는 게 맞다. 다시 BEST_EFFORT로 돌리려면
+# 아래 값을 SENSOR_DATA로 바꾸면 된다(위 08-31 주석 참고).
+color_qos: SYSTEM_DEFAULT
+color_info_qos: SYSTEM_DEFAULT
+depth_qos: SYSTEM_DEFAULT
+depth_info_qos: SYSTEM_DEFAULT
+aligned_depth_to_color_qos: SYSTEM_DEFAULT

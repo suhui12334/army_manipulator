@@ -13,6 +13,109 @@
 
   <link name="world"/>
 
-  <xacro:army_manipulator prefix="" parent="world" use_mock_hardware="$(arg use_mock_hardware)" use_mesh="$(arg use_mesh)"/>
+  <!-- ========== 차체(chassis) 충돌 지오메트리 ==========
+       [추가] R3 "차체 간섭 방지" 요구사항용. 이 전까지는 planning scene에
+       차체가 아예 없어서 MoveIt이 팔-차체 충돌을 원천적으로 못 봤다
+       (자기충돌 체크는 SRDF disable_collisions로 팔 링크끼리만 되어있었음).
+
+       2026-08-24 실측값 반영. 박스 중심은 차체 지면 접촉면 중앙, 팔은 박스
+       윗면에서 (mount_x, mount_y) 만큼 이동하고 거기서 mount_z 만큼 더 위로
+       올라간 위치(마운트 브라켓 높이)에 장착된다고 가정. mount_x는 ROS 표준
+       관례(+x=전방)를 가정한 값 — 실제 로봇 정면 방향이 다르면 부호를
+       바꿀 것. 좌우(mount_y) 오프셋은 실측 안 돼 중앙(0.0)으로 둠. 값이
+       또 바뀌면 launch argument로 덮어쓰면 된다(코드 수정 불필요):
+         ros2 launch ... chassis_length:=... chassis_width:=...
+         chassis_height:=... chassis_mount_x:=... chassis_mount_y:=...
+         chassis_mount_z:=... -->
+  <xacro:arg name="chassis_length" default="0.78"/>
+  <xacro:arg name="chassis_width" default="0.50"/>
+  <xacro:arg name="chassis_height" default="0.30"/>
+  <xacro:arg name="chassis_mount_x" default="0.25"/>
+  <xacro:arg name="chassis_mount_y" default="0.0"/>
+  <!-- 차체 상단(0.30m)과 팔 실제 장착 높이(바닥 기준 0.35m) 사이 0.05m 브라켓 높이 -->
+  <xacro:arg name="chassis_mount_z" default="0.05"/>
+
+  <!-- ========== 차체 위 세로 프레임(20x20 프로파일, 2026-08-31 실측 갱신) ==========
+       robot.stl(636,838 tri)을 collision에 그대로 쓰면 move_group이 멎어서
+       (위 기록 참고) 간섭 계산이 실제로 필요한 부분만 박스로 근사한다.
+       world 원점(z=0, 바닥) 기준, 전방 x=90.461mm 위치에서 양옆
+       (y=±chassis_width/2)으로 기둥 2개가 z=920.188mm(=805.188+115mm 보정,
+       2026-08-30)까지 올라간다.
+       가로대(crossbar): 2026-08-31 실측으로 갱신 - 차체 상단(chassis_height=
+       300mm)에서 530mm 위(=바닥 기준 830mm)가 20x20 프로파일의 아래쪽 면,
+       거기서 20mm를 더한 850mm(바닥 기준)가 위쪽 면 -> 중심은 바닥 기준
+       840mm. x위치는 기둥과 동일(변경 없음). -->
+  <xacro:property name="frame_post_x"      value="0.090461"/>
+  <xacro:property name="frame_post_y"      value="${$(arg chassis_width) / 2.0}"/>
+  <xacro:property name="frame_post_height" value="0.920188"/>
+  <xacro:property name="frame_crossbar_z"  value="0.840"/>
+  <xacro:property name="frame_profile"     value="0.020"/>
+
+  <joint name="world_to_chassis" type="fixed">
+    <parent link="world"/>
+    <child link="chassis_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+  <link name="chassis_link">
+    <visual>
+      <origin xyz="0 0 ${$(arg chassis_height) / 2.0}" rpy="0 0 0"/>
+      <geometry><box size="$(arg chassis_length) $(arg chassis_width) $(arg chassis_height)"/></geometry>
+      <material name="motor_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${$(arg chassis_height) / 2.0}" rpy="0 0 0"/>
+      <geometry><box size="$(arg chassis_length) $(arg chassis_width) $(arg chassis_height)"/></geometry>
+    </collision>
+
+    <visual>
+      <origin xyz="${frame_post_x} ${frame_post_y} ${frame_post_height / 2.0}" rpy="0 0 0"/>
+      <geometry><box size="${frame_profile} ${frame_profile} ${frame_post_height}"/></geometry>
+      <material name="motor_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="${frame_post_x} ${frame_post_y} ${frame_post_height / 2.0}" rpy="0 0 0"/>
+      <geometry><box size="${frame_profile} ${frame_profile} ${frame_post_height}"/></geometry>
+    </collision>
+
+    <visual>
+      <origin xyz="${frame_post_x} ${-frame_post_y} ${frame_post_height / 2.0}" rpy="0 0 0"/>
+      <geometry><box size="${frame_profile} ${frame_profile} ${frame_post_height}"/></geometry>
+      <material name="motor_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="${frame_post_x} ${-frame_post_y} ${frame_post_height / 2.0}" rpy="0 0 0"/>
+      <geometry><box size="${frame_profile} ${frame_profile} ${frame_post_height}"/></geometry>
+    </collision>
+
+    <visual>
+      <origin xyz="${frame_post_x} 0 ${frame_crossbar_z}" rpy="0 0 0"/>
+      <geometry><box size="${frame_profile} $(arg chassis_width) ${frame_profile}"/></geometry>
+      <material name="motor_dark"/>
+    </visual>
+    <collision>
+      <origin xyz="${frame_post_x} 0 ${frame_crossbar_z}" rpy="0 0 0"/>
+      <geometry><box size="${frame_profile} $(arg chassis_width) ${frame_profile}"/></geometry>
+    </collision>
+
+    <inertial>
+      <!-- 차체는 고정(fixed) 링크라 관성값이 플래닝/제어에 안 쓰이지만,
+           URDF 파서가 링크에 관성 없이 collision만 있으면 경고를 내는 경우가
+           있어 형식상 채워둔다. -->
+      <mass value="1.0"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.05" ixy="0" ixz="0" iyy="0.05" iyz="0" izz="0.05"/>
+    </inertial>
+  </link>
+  <joint name="chassis_to_arm_mount" type="fixed">
+    <parent link="chassis_link"/>
+    <child link="arm_mount_link"/>
+    <!-- chassis_link 원점이 이제 world 지면(z=0, world_to_chassis 참고)이라
+         차체 상단(chassis_height) + 브라켓 높이(chassis_mount_z)를 그대로
+         더해야 문서화된 팔 마운트 높이(바닥 기준 0.35m)가 나온다. -->
+    <origin xyz="$(arg chassis_mount_x) $(arg chassis_mount_y) ${$(arg chassis_height) + $(arg chassis_mount_z)}" rpy="0 0 0"/>
+  </joint>
+  <link name="arm_mount_link"/>
+
+  <xacro:army_manipulator prefix="" parent="arm_mount_link" use_mock_hardware="$(arg use_mock_hardware)" use_mesh="$(arg use_mesh)"/>
 
 </robot>

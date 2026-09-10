@@ -12,7 +12,7 @@ start_state_max_bounds_error: 0.1
 arm:
   planner_configs:
     - RRTConnectkConfigDefault
-  projection_evaluator: joints(shoulder_lift_joint,elbow_joint)
+  projection_evaluator: joints(shoulder_joint,elbow_joint)
   longest_valid_segment_fraction: 0.005
 
 gripper:

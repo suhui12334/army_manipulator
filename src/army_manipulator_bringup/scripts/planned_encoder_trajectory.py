@@ -32,7 +32,7 @@ class PlannedEncoderTrajectory(Node):
         self.declare_parameter("display_trajectory_topic", "/display_planned_path")
         self.declare_parameter("encoder_trajectory_topic", "/arm/planned_encoder_trajectory")
         self.declare_parameter(
-            "joint_names", ["base_joint", "shoulder_lift_joint", "elbow_joint", "wrist_joint"]
+            "joint_names", ["base_joint", "shoulder_joint", "elbow_joint", "wrist_joint"]
         )
         self.display_topic = str(self.get_parameter("display_trajectory_topic").value)
         self.encoder_topic = str(self.get_parameter("encoder_trajectory_topic").value)

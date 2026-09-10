@@ -17,7 +17,7 @@ joint_limits:
     max_velocity: 2.618
     has_acceleration_limits: true
     max_acceleration: 2.618
-  shoulder_lift_joint:
+  shoulder_joint:
     has_velocity_limits: true
     max_velocity: 1.047
     has_acceleration_limits: true

@@ -94,7 +94,7 @@ def generate_launch_description():
         parameters=[{
             "zeros": {
                 "base_joint": 0.0,
-                "shoulder_lift_joint": 0.0,
+                "shoulder_joint": 0.0,
                 "elbow_joint": 0.0,
                 "wrist_joint": 0.0,
                 "gripper_joint": 0.0,

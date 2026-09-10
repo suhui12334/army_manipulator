@@ -1,8 +1,15 @@
 # Default initial positions for army_manipulator's ros2_control fake system
-
+#
+# [수정, 2026-09-01] 전부 0(STAND)이던 걸 HOME 자세로 변경 - 팔의 기본/대기
+# 상태는 STAND가 아니라 HOME이다(maru_ik_node.py의 HOME_ARM_JOINTS와 동일한
+# 값, 2026-08-31 재실측). mock 하드웨어는 이 값으로 부팅하자마자 초기화되고
+# 별도로 HOME으로 이동시키는 코드가 없으므로(maru_ik_node의 HOME-우선-이동
+# 로직 제거 이후), 여기서 맞춰두지 않으면 부팅 직후 항상 STAND로 보인다.
+# gripper_joint는 GRIPPER_OPEN(0.07363, maru_ik_node.py와 동일)로 - HOME에서
+# 뭔가를 쥐고 있을 이유가 없다.
 initial_positions:
   base_joint: 0
-  elbow_joint: 0
-  gripper_joint: 0
-  shoulder_lift_joint: 0
-  wrist_joint: 0
+  elbow_joint: 1.6383
+  gripper_joint: 0.07363
+  shoulder_joint: -1.4818
+  wrist_joint: 1.5329

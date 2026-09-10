@@ -9,11 +9,6 @@
     <!--JOINTS: When a joint is specified, the child link of that joint (which will always exist) is automatically included-->
     <!--CHAINS: When a chain is specified, all the links along the chain (including endpoints) are included in the group. Additionally, all the joints that are parents to included links are also included. This means that joints along the chain and the parent joint of the base link are included in the group-->
     <!--SUBGROUPS: Groups can also be formed by referencing to already defined group names-->
-    <!-- [수정] arm/gripper 그룹은 moveit_controllers.yaml의 arm_controller(4DOF:
-         base/shoulder/elbow/wrist)/gripper_controller(gripper_joint) 매핑과 정확히
-         일치시키기 위해 Setup Assistant 자동생성 버전(arm이 tcp_link까지 gripper_joint를
-         포함하던 것)이 아니라 기존 수기 버전을 유지한다 - move_group 실제 구동 테스트로
-         검증된 구조. -->
     <group name="arm">
         <chain base_link="base_actuator" tip_link="wrist_link"/>
     </group>
@@ -23,21 +18,15 @@
     <!--GROUP STATES: Purpose: Define a named state for a particular group, in terms of joint values. This is useful to define states like 'folded arms'-->
     <group_state name="home" group="arm">
         <joint name="base_joint" value="0"/>
-        <joint name="shoulder_lift_joint" value="1.027"/>
-        <joint name="elbow_joint" value="-1.2584"/>
-        <joint name="wrist_joint" value="-1.1716"/>
-    </group_state>
-    <group_state name="grip_wait" group="arm">
-        <joint name="base_joint" value="-0.3037"/>
-        <joint name="shoulder_lift_joint" value="-0.7087"/>
-        <joint name="elbow_joint" value="-1.3741"/>
-        <joint name="wrist_joint" value="-0.998"/>
+        <joint name="elbow_joint" value="1.5584"/>
+        <joint name="shoulder_joint" value="-1.4659"/>
+        <joint name="wrist_joint" value="-1.3186"/>
     </group_state>
     <group_state name="open" group="gripper">
-        <joint name="gripper_joint" value="-1.0647"/>
+        <joint name="gripper_joint" value="0.07363"/>
     </group_state>
     <group_state name="closed" group="gripper">
-        <joint name="gripper_joint" value="-2.5831"/>
+        <joint name="gripper_joint" value="2.59396"/>
     </group_state>
     <group_state name="grasp" group="gripper">
         <joint name="gripper_joint" value="1.7791"/>
@@ -48,23 +37,54 @@
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
     <end_effector name="gripper_ee" parent_link="wrist_link" group="gripper" parent_group="arm"/>
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
-    <!-- 아래 목록은 Setup Assistant의 Self-Collisions 자동 계산 결과 (수기 목록보다
-         정확함 - 실제 형상 기반으로 Never/Default/Adjacent를 구분해서 계산됨). -->
-    <disable_collisions link1="base_actuator" link2="base_link" reason="Adjacent"/>
-    <disable_collisions link1="base_link" link2="shoulder_link" reason="Adjacent"/>
+    <disable_collisions link1="base_actuator" link2="arm_base_link" reason="Adjacent"/>
+    <disable_collisions link1="base_actuator" link2="chassis_link" reason="Adjacent"/>
+    <!-- [임시, 2026-08-31 재확인] mount 높이 버그 수정 / crossbar 높이(0.84m) /
+         rack_right.stl 갱신을 모두 반영한 뒤에도 check_state_validity로 재확인한
+         결과 HOME_ARM_JOINTS, HOLD_ARM_JOINTS(maru_ik_node.py) 자세에서 여전히
+         진짜 충돌 - compute_fk로 확인한 HOME 자세 기준 cam_link(z=0.150m),
+         gripper_actuator/pinion_gear(z=0.227m), wrist_link(z=0.211m)가 전부
+         차체 박스 x/y 풋프린트 안쪽인데 z는 차체 상판(0.30m)보다 낮아 차체
+         몸통 안으로 70~150mm 파고든 상태. 프레임(기둥 z≈0.92m, 가로대
+         z≈0.84m)은 팔이 그 위로 접혀 쉬도록 만든 구조로 보이는데 현재
+         HOME_ARM_JOINTS 각도(shoulder=1.71548, elbow=1.58825, wrist=1.51844)는
+         차체 몸통 쪽으로 접혀 들어간다 - mesh/origin 오차가 아니라 HOME 자세
+         각도 자체(또는 마운트 위치) 재설계가 필요한 문제로 판단. 근본 원인
+         해결 전까지 뎁스카메라->IK->MoveIt 파이프라인과 AUTO 스토우 자체만
+         검증하기 위해 임시로 재비활성화. 해결되면 이 4줄 지우고 실제 충돌을
+         다시 잡을 것. -->
+    <disable_collisions link1="chassis_link" link2="wrist_link" reason="TEMPORARY - pending HOME/HOLD pose or mount redesign"/>
+    <disable_collisions link1="chassis_link" link2="rack_left" reason="TEMPORARY - pending HOME/HOLD pose or mount redesign"/>
+    <disable_collisions link1="chassis_link" link2="rack_right" reason="TEMPORARY - pending HOME/HOLD pose or mount redesign"/>
+    <disable_collisions link1="chassis_link" link2="pinion_gear" reason="TEMPORARY - pending HOME/HOLD pose or mount redesign"/>
+    <disable_collisions link1="chassis_link" link2="cam_link" reason="TEMPORARY - pending HOME/HOLD pose or mount redesign"/>
+    <disable_collisions link1="chassis_link" link2="elbow_link" reason="TEMPORARY - pending HOME/HOLD pose or mount redesign"/>
+    <disable_collisions link1="chassis_link" link2="gripper_actuator" reason="TEMPORARY - pending HOME/HOLD pose or mount redesign"/>
+    <disable_collisions link1="chassis_link" link2="wrist_actuator" reason="TEMPORARY - pending HOME/HOLD pose or mount redesign"/>
+    <disable_collisions link1="arm_base_link" link2="shoulder_actuator" reason="Adjacent"/>
+    <disable_collisions link1="arm_base_link" link2="shoulder_link" reason="Adjacent"/>
     <disable_collisions link1="cam_link" link2="pinion_gear" reason="Never"/>
     <disable_collisions link1="cam_link" link2="rack_left" reason="Never"/>
     <disable_collisions link1="cam_link" link2="rack_right" reason="Never"/>
     <disable_collisions link1="cam_link" link2="wrist_link" reason="Adjacent"/>
+    <disable_collisions link1="elbow_actuator" link2="elbow_link" reason="Default"/>
+    <disable_collisions link1="elbow_actuator" link2="shoulder_link" reason="Adjacent"/>
     <disable_collisions link1="elbow_link" link2="pinion_gear" reason="Never"/>
     <disable_collisions link1="elbow_link" link2="rack_left" reason="Never"/>
     <disable_collisions link1="elbow_link" link2="rack_right" reason="Never"/>
     <disable_collisions link1="elbow_link" link2="shoulder_link" reason="Adjacent"/>
+    <disable_collisions link1="elbow_link" link2="wrist_actuator" reason="Adjacent"/>
     <disable_collisions link1="elbow_link" link2="wrist_link" reason="Adjacent"/>
+    <disable_collisions link1="gripper_actuator" link2="pinion_gear" reason="Default"/>
+    <disable_collisions link1="gripper_actuator" link2="rack_left" reason="Default"/>
+    <disable_collisions link1="gripper_actuator" link2="rack_right" reason="Default"/>
+    <disable_collisions link1="gripper_actuator" link2="wrist_link" reason="Adjacent"/>
     <disable_collisions link1="pinion_gear" link2="rack_left" reason="Default"/>
     <disable_collisions link1="pinion_gear" link2="rack_right" reason="Default"/>
     <disable_collisions link1="pinion_gear" link2="wrist_link" reason="Adjacent"/>
     <disable_collisions link1="rack_left" link2="rack_right" reason="Never"/>
     <disable_collisions link1="rack_left" link2="wrist_link" reason="Adjacent"/>
     <disable_collisions link1="rack_right" link2="wrist_link" reason="Adjacent"/>
+    <disable_collisions link1="shoulder_actuator" link2="shoulder_link" reason="Adjacent"/>
+    <disable_collisions link1="wrist_actuator" link2="wrist_link" reason="Default"/>
 </robot>

@@ -3,11 +3,11 @@
 
 실물 뎁스카메라 없이도 depth_camera_ik_bringup.launch.py의 다운스트림
 (maru_ik_node의 MoveIt IK 역산 -> arm_controller/gripper_controller 실행)을
-검증할 수 있도록, target_detector_node가 하는 일(카메라 좌표 -> /arm/target_point
+검증할 수 있도록, summer_supply(ArmPickupNode)가 하는 일(카메라 좌표 -> /arm/target_point
 publish)을 파라미터로 받은 고정 좌표로 흉내낸다.
 
 launch에서 sim_target:=true 로 켜면 realsense_bringup.launch.py +
-target_detector_node 대신 이 노드가 뜬다(depth_camera_ik_bringup.launch.py 참고).
+summer_supply(dolbotz 패키지) 대신 이 노드가 뜬다(depth_camera_ik_bringup.launch.py 참고).
 """
 
 from geometry_msgs.msg import PointStamped
