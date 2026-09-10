@@ -1,35 +1,41 @@
 """뎁스카메라 좌표 -> MoveIt IK 역산 -> 팔 경로 실행까지의 전체 파이프라인 bringup.
 
+[2026-08-30 분리] 원래 이 파일 하나에 다 있던 걸 터미널/역할별로 4개로 쪼갰다:
+  - realsense_bringup.launch.py  : 카메라 드라이버만(RealSense + cam_link TF)
+  - perception_bringup.launch.py : 서플라이박스 인식(dolbotz의 summer_supply) +
+                                    좌표추출 (-> /arm/target_point, 카메라는
+                                    포함 안 함 - 위 걸 따로 띄워야 함)
+  - control_bringup.launch.py    : TF 변환 -> MoveIt/IK -> 실제 명령 실행 +
+                                    엔코더/CAN 송신값 관측용 병렬 출력
+  - ui_bringup.launch.py         : 로컬 RViz + 구동부 연동 참고(실제 릴레이 노드는
+                                    없음 - control_bringup이 관련 토픽을 직접 publish)
+카메라와 인식이 별도 launch로 나뉜 이유: 실기 디버깅 중 카메라(시리얼/
+네임스페이스 문제 등)만 따로 켜고 끄며 확인해야 할 일이 많아서, 인식
+로직과 분리해두는 게 실전에서 훨씬 편했다.
+이 파일은 그 넷 중 카메라 + perception + control 세 개를 한 번에 띄우는
+하위호환용 래퍼일 뿐, 새 로직은 없다. 빠른 시뮬레이션 검증
+(sim_target:=true)이나 "전부 한 프로세스 트리로" 띄우고 싶을 때 이거
+하나만 실행하면 되고, 터미널을 역할별로 나누고 싶으면 위 네 launch를
+따로따로 실행하면 된다.
+
 기동 순서:
   mock_bringup.launch.py (robot_state_publisher -> ros2_control_node ->
   joint_state_broadcaster -> arm_controller/gripper_controller -> move_group ->
   RViz -> maru_ik_node)
   + (sim_target:=false, 기본) realsense_bringup.launch.py (RealSense 드라이버
-    + cam_link<->camera_link TF) + target_detector_node (compressed color/depth
-    -> 3D 타겟 좌표 -> /arm/target_point)
+    + cam_link<->camera_link TF) + summer_supply/ArmPickupNode(dolbotz 패키지,
+    compressed color/depth -> 3D 타겟 좌표 -> /arm/target_point)
   + (sim_target:=true) fake_target_publisher (실물 카메라 없이 파라미터로 받은
     고정 좌표를 지연 후 /arm/target_point로 publish - 카메라/검출 노드 없이도
     maru_ik_node 이후 다운스트림 전체를 시뮬레이션으로 검증할 때 사용)
 
-즉 이 launch 자체는 새 로직이 없고, 이미 각각 검증된 조각들
-(팔+MoveIt, 카메라 드라이버+타겟 검출 또는 그 자리의 가짜 타겟 발행)을
-하나로 묶기만 한다:
-  카메라 픽셀+깊이 -> target_detector_node가 3D 점으로 변환(또는 sim_target
-  모드에서 fake_target_publisher가 고정 좌표로 대체)해 /arm/target_point
-  (PointStamped)로 publish
-  -> maru_ik_node가 그 점을 구독해 MoveIt GetPositionIK로 관절해를 구하고
-  arm_controller/gripper_controller로 전송
-  -> planned_encoder_trajectory가 MoveIt 경로를 raw encoder-radian 궤적으로
-  /arm/planned_encoder_trajectory에 관측용 발행
-
-detection: target_detector_node는 dolbotZ(9o9hz/dolbotZ)의 arm_pickup_node와
-동일한 패턴 — 사전 학습된 YOLO(ultralytics) 가중치로 color 이미지에서
-target_class 클래스(기본 "supplybox")를 검출해 confidence가 가장 높은 박스
-중심 주변 depth ROI 중앙값을 깊이로 쓴다. 가중치 파일이
-config/models/supplybest_openvino_model/(또는 model_path로 지정한 경로)에
-없으면 검출이 항상 실패해 팔이 움직이지 않으니, 실물 카메라 모드
-(sim_target:=false) 실행 전에 가중치가 준비됐는지 먼저 확인할 것. 가중치 없이
-다운스트림(IK/실행) 파이프라인만 검증하려면 sim_target:=true를 사용.
+detection: summer_supply(ArmPickupNode, dolbotz/missions/summer_supply.py)는
+YOLO(ultralytics, supplyboxv3.pt - 2026-08-30 RF-DETR와 비교 후 이걸로
+확정)로 color 이미지에서 서플라이박스를 검출하고, confidence가 가장 높은
+박스 중심 주변 depth ROI 중앙값을 깊이로 쓴다. 가중치 파일(*.pt)은 git으로
+동기화 안 되니(.gitignore) 실물 카메라 모드(sim_target:=false) 실행 전에
+config/models/에 준비됐는지 먼저 확인할 것. 가중치 없이 다운스트림(IK/실행)
+파이프라인만 검증하려면 sim_target:=true를 사용.
 
 주의(compressed transport): color/depth 기본 토픽이 CompressedImage
 (`.../compressed`, `.../compressedDepth`)라서, realsense2_camera가 이 토픽을
@@ -45,197 +51,102 @@ real hardware:
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition, UnlessCondition
+from launch.conditions import UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
     declared_arguments = [
+        # ----- 공통 (control_bringup.launch.py로 그대로 전달) -----
+        DeclareLaunchArgument("use_mock_hardware", default_value="true"),
+        DeclareLaunchArgument("use_mesh", default_value="true"),
+        DeclareLaunchArgument("launch_rviz", default_value="true"),
         DeclareLaunchArgument(
-            "use_mock_hardware",
+            "auto_enable",
             default_value="true",
-            description="mock_bringup.launch.py로 그대로 전달. false면 실제 하드웨어 플러그인 사용.",
+            description="control_bringup.launch.py로 그대로 전달. AUTO 자동 활성화 여부.",
         ),
-        DeclareLaunchArgument(
-            "use_mesh",
-            default_value="true",
-            description="mock_bringup.launch.py로 그대로 전달.",
-        ),
-        DeclareLaunchArgument(
-            "color_topic",
-            default_value="/camera/camera/color/image_raw/compressed",
-            description="target_detector_node로 그대로 전달(sim_target:=false일 때만 사용).",
-        ),
+        # ----- perception_bringup.launch.py로 그대로 전달 -----
+        DeclareLaunchArgument("sim_target", default_value="false"),
+        # ----- realsense_bringup.launch.py로 그대로 전달 -----
+        DeclareLaunchArgument("serial_no", default_value="_243322074693"),
+        DeclareLaunchArgument("camera_namespace", default_value="arm"),
+        DeclareLaunchArgument("camera_name", default_value="camera"),
+        DeclareLaunchArgument("color_profile", default_value="640x480x15"),
+        DeclareLaunchArgument("depth_profile", default_value="640x480x15"),
+        DeclareLaunchArgument("color_topic", default_value="/arm/camera/color/image_raw/compressed"),
         DeclareLaunchArgument(
             "depth_topic",
-            default_value="/camera/camera/aligned_depth_to_color/image_raw/compressedDepth",
-            description="target_detector_node로 그대로 전달(sim_target:=false일 때만 사용).",
+            default_value="/arm/camera/aligned_depth_to_color/image_raw/compressedDepth",
         ),
-        DeclareLaunchArgument(
-            "camera_info_topic",
-            default_value="/camera/camera/color/camera_info",
-            description="target_detector_node로 그대로 전달(sim_target:=false일 때만 사용).",
-        ),
-        DeclareLaunchArgument(
-            "model_path",
-            default_value="",
-            description=(
-                "target_detector_node로 그대로 전달(sim_target:=false일 때만 사용). "
-                "빈 문자열이면 노드 기본값"
-                "(<share>/army_manipulator_bringup/config/models/supplybest_openvino_model) 사용."
-            ),
-        ),
-        DeclareLaunchArgument(
-            "target_class",
-            default_value="supplybox",
-            description="target_detector_node로 그대로 전달. YOLO 검출 결과 중 이 클래스명만 타겟으로 사용.",
-        ),
-        DeclareLaunchArgument(
-            "conf_threshold",
-            default_value="0.5",
-            description="target_detector_node로 그대로 전달. YOLO confidence 임계값.",
-        ),
-        DeclareLaunchArgument(
-            "infer_size",
-            default_value="320",
-            description="target_detector_node로 그대로 전달. YOLO 추론 해상도(GPU 없는 환경 속도용).",
-        ),
-        DeclareLaunchArgument(
-            "depth_roi_radius",
-            default_value="5",
-            description="target_detector_node로 그대로 전달. 타겟 중심 픽셀 주변 깊이 샘플링 반경(px).",
-        ),
-        DeclareLaunchArgument(
-            "max_depth_m",
-            default_value="0.8",
-            description="target_detector_node로 그대로 전달. 팔 집기 반경 내 유효 깊이 상한(m).",
-        ),
-        DeclareLaunchArgument(
-            "sim_target",
-            default_value="false",
-            description=(
-                "true면 realsense2_camera 드라이버/target_detector_node 대신 "
-                "fake_target_publisher가 target_x/y/z 좌표를 /arm/target_point로 "
-                "publish한다. 실물 카메라 없이 IK/실행 파이프라인만 시뮬레이션으로 "
-                "검증할 때 사용."
-            ),
-        ),
-        DeclareLaunchArgument(
-            "target_x",
-            default_value="0.0313",
-            description="sim_target:=true일 때 fake_target_publisher가 쏘는 목표 x(m).",
-        ),
-        DeclareLaunchArgument(
-            "target_y",
-            default_value="0.2279",
-            description="sim_target:=true일 때 fake_target_publisher가 쏘는 목표 y(m).",
-        ),
-        DeclareLaunchArgument(
-            "target_z",
-            default_value="0.423",
-            description="sim_target:=true일 때 fake_target_publisher가 쏘는 목표 z(m).",
-        ),
-        DeclareLaunchArgument(
-            "sim_target_delay",
-            default_value="15.0",
-            description=(
-                "sim_target:=true일 때, 파이프라인이 다 뜰 시간을 준 뒤 목표를 쏘기까지의 지연(초). "
-                "move_group의 /compute_ik가 뜨는 데 이 환경에서 ~13초 걸리는 걸 실측해서 "
-                "여유를 두고 15초로 설정 - 너무 짧으면 fake_target_publisher가 IK 서비스가 "
-                "뜨기 전에 쏴서 'IK service not ready'로 무시된다."
-            ),
-        ),
+        DeclareLaunchArgument("camera_info_topic", default_value="/arm/camera/color/camera_info"),
+        DeclareLaunchArgument("model_path", default_value=""),
+        DeclareLaunchArgument("target_class", default_value="supplybox"),
+        DeclareLaunchArgument("conf_threshold", default_value="0.5"),
+        DeclareLaunchArgument("infer_size", default_value="320"),
+        DeclareLaunchArgument("depth_roi_radius", default_value="5"),
+        DeclareLaunchArgument("max_depth_m", default_value="1.0"),
+        DeclareLaunchArgument("target_x", default_value="0.0313"),
+        DeclareLaunchArgument("target_y", default_value="0.2279"),
+        DeclareLaunchArgument("target_z", default_value="0.423"),
+        DeclareLaunchArgument("sim_target_delay", default_value="15.0"),
     ]
 
-    use_mock_hardware = LaunchConfiguration("use_mock_hardware")
-    use_mesh = LaunchConfiguration("use_mesh")
-    color_topic = LaunchConfiguration("color_topic")
-    depth_topic = LaunchConfiguration("depth_topic")
-    camera_info_topic = LaunchConfiguration("camera_info_topic")
-    model_path = LaunchConfiguration("model_path")
-    target_class = LaunchConfiguration("target_class")
-    conf_threshold = LaunchConfiguration("conf_threshold")
-    infer_size = LaunchConfiguration("infer_size")
-    depth_roi_radius = LaunchConfiguration("depth_roi_radius")
-    max_depth_m = LaunchConfiguration("max_depth_m")
-    sim_target = LaunchConfiguration("sim_target")
-    target_x = LaunchConfiguration("target_x")
-    target_y = LaunchConfiguration("target_y")
-    target_z = LaunchConfiguration("target_z")
-    sim_target_delay = LaunchConfiguration("sim_target_delay")
+    control_keys = ("use_mock_hardware", "use_mesh", "launch_rviz", "auto_enable")
+    camera_keys = (
+        "serial_no", "camera_namespace", "camera_name", "color_profile", "depth_profile",
+    )
+    perception_keys = (
+        "sim_target", "color_topic", "depth_topic", "camera_info_topic",
+        "model_path", "target_class", "conf_threshold", "infer_size",
+        "depth_roi_radius", "max_depth_m",
+        "target_x", "target_y", "target_z", "sim_target_delay",
+    )
+    passthrough = {
+        name: LaunchConfiguration(name) for name in control_keys + camera_keys + perception_keys
+    }
+    sim_target = passthrough["sim_target"]
 
-    arm_and_moveit = IncludeLaunchDescription(
+    control = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
-                [FindPackageShare("army_manipulator_bringup"), "launch", "mock_bringup.launch.py"]
+                [FindPackageShare("army_manipulator_bringup"), "launch", "control_bringup.launch.py"]
             )
         ),
-        launch_arguments={
-            "use_mock_hardware": use_mock_hardware,
-            "use_mesh": use_mesh,
-        }.items(),
+        launch_arguments={k: passthrough[k] for k in control_keys}.items(),
     )
 
-    depth_camera = IncludeLaunchDescription(
+    # sim_target:=true면 카메라 자체를 안 띄운다(fake_target_publisher가 대신함).
+    camera = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
                 [FindPackageShare("army_manipulator_bringup"), "launch", "realsense_bringup.launch.py"]
             )
         ),
+        launch_arguments={k: passthrough[k] for k in camera_keys}.items(),
         condition=UnlessCondition(sim_target),
     )
 
-    target_detector_node = Node(
-        package="army_manipulator_bringup",
-        executable="target_detector_node.py",
-        output="screen",
-        parameters=[
-            {
-                "color_topic": color_topic,
-                "depth_topic": depth_topic,
-                "camera_info_topic": camera_info_topic,
-                "model_path": model_path,
-                "target_class": target_class,
-                "conf_threshold": conf_threshold,
-                "infer_size": infer_size,
-                "depth_roi_radius": depth_roi_radius,
-                "max_depth_m": max_depth_m,
-            }
-        ],
-        condition=UnlessCondition(sim_target),
+    perception = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [FindPackageShare("army_manipulator_bringup"), "launch", "perception_bringup.launch.py"]
+            )
+        ),
+        launch_arguments={k: passthrough[k] for k in perception_keys}.items(),
     )
 
-    fake_target_publisher_node = Node(
-        package="army_manipulator_bringup",
-        executable="fake_target_publisher.py",
-        output="screen",
-        parameters=[
-            {
-                "x": target_x,
-                "y": target_y,
-                "z": target_z,
-                "delay_sec": sim_target_delay,
-            }
-        ],
-        condition=IfCondition(sim_target),
-    )
-
-    planned_encoder_trajectory_node = Node(
-        package="army_manipulator_bringup",
-        executable="planned_encoder_trajectory.py",
-        output="screen",
-    )
+    # AUTO 게이트(맴/mission 안전 확인 포함)는 control_bringup.launch.py 안에
+    # 이미 구현돼 있고, auto_enable 인자가 그대로 전달되므로 여기서 따로
+    # 다룰 게 없다.
 
     return LaunchDescription(
         declared_arguments
         + [
-            arm_and_moveit,
-            depth_camera,
-            target_detector_node,
-            fake_target_publisher_node,
-            planned_encoder_trajectory_node,
+            control,
+            camera,
+            perception,
         ]
     )

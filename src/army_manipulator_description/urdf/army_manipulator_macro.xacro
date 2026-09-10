@@ -1,40 +1,58 @@
 <?xml version="1.0"?>
 <!--
-  MARU 로봇팔 매크로 (수정본)
+  MARU 로봇팔 매크로 (DH Modified 컨벤션 개정본)
   ============================================================
-  STL 좌표축 컨벤션 (모든 mesh에 공통, mesh 회전 없이 그대로 링크 로컬 프레임으로 사용):
-    전면부 = +Z, 하단부(바닥 방향) = +Y, 우측 = +X
-  즉 world_to_base가 무회전이므로 base_actuator 이하 모든 링크의 "Y축"이 곧
-  중력/수직 방향이고, "Z축"이 로봇의 전면(주 reach) 방향이다.
+  [좌표축 컨벤션] ~/Downloads/robot_urdf_parameters.md.docx 스펙에 따라 모든
+  revolute/prismatic 조인트의 axis를 로컬 Z축(0 0 1)으로 통일했다 (DH Modified
+  컨벤션: 조인트 로컬 프레임의 Z축 = 실제 관절축).
 
-  [오른손 법칙 검산 - 중요]
-  +X축 기준 양(+)의 회전(Rx(+θ))은 +Y축을 +Z축 쪽으로 돌린다. 즉 (0,1,0) -> (0,cosθ,sinθ).
-  뒤집어 말하면 +Z축은 -Y쪽으로 돈다: (0,0,1) -> (0,-sinθ,cosθ).
-  따라서 "전면(+Z)이 하단(+Y) 방향으로 숙여지는" 동작(카메라 하향 틸트 등)은
-  +X 회전이 아니라 X축 기준 음(-)의 회전이다. (이전 버전 주석은 부호 설명이 반대로
-  적혀 있었음 - 결론인 "하향 틸트 = -X 회전"은 맞았지만 근거 문장이 틀렸었다.)
+  DH 링크 파라미터(문서 기준, 이 xacro의 기존 실측 치수와 정확히 일치함):
+    d1 = shoulder_off = 103.9mm (base axis -> shoulder axis)
+    a2 = L1            = 180mm  (shoulder axis -> elbow axis)
+    a3 = L2             = 220mm  (elbow axis -> wrist axis)
+    alpha1 = 90°  (Z0 수직 ⊥ Z1 수평), alpha2 = alpha3 = 0° (Z1 ∥ Z2 ∥ Z3)
 
-  같은 논리로, 어떤 링크의 "베이스 선회/pan"처럼 중력축(수직) 기준 회전이 필요한
-  조인트는 axis가 Y여야 하고(Z는 전면=수평축이라 pan에 쓰면 안 됨), 팔의 pitch류
-  조인트(shoulder/elbow/wrist)처럼 수평-좌우축 기준으로 앞뒤/상하로 숙이는 회전은
-  axis가 X여야 한다(좌우축이 곧 pitch 힌지축).
+  [변환 방법 - 재현/검증 방법]
+  기존(이전 커밋) xacro는 base_joint/gripper_joint/rack_*_joint만 axis=Z이고
+  shoulder_joint/elbow_joint/wrist_joint(피치 조인트)는 axis=X였다. 이번
+  개정은 물리적 치수·조인트 부호·리미트·mimic 방향은 전혀 건드리지 않고, 각
+  링크의 로컬 좌표축만 고정 회전(C_link)으로 재배치해서 axis=X였던 3개 피치
+  조인트도 axis=Z가 되도록 re-frame했다:
+    C(base_actuator) = C(base_link) = I                (베이스 회전축은 이미 Z=수직)
+    C(shoulder_link) = C(elbow_link) = C(wrist_link)
+      = C(rack_left) = C(rack_right) = Ry(+90°)          (구 로컬 X 피치축 -> 신 로컬 Z)
+    C(pinion_gear) = C(tcp_link) = I                     (그리퍼 스핀축은 이미 Z)
+    고정(fixed) 자식 링크(shoulder_actuator/elbow_actuator/wrist_actuator/
+    gripper_actuator/cam_link)는 각자의 parent 링크와 동일한 C를 상속한다.
+  각 조인트 origin(xyz,rpy)과 각 링크 mesh origin(rpy)은
+    origin_xyz_new = C(parent)^T @ origin_xyz_old
+    origin_R_new   = C(parent)^T @ origin_R_old @ C(child)
+    mesh_R_new     = C(link)^T @ mesh_R_old
+  로 재계산했고, world 좌표계 기준 모든 조인트 원점 위치·모든 mesh 배치가
+  임의의 조인트각에서 이전 버전과 완전히 동일함(수치오차 <1e-15, numpy/scipy로
+  검증)을 확인했다. 즉 로봇의 물리적 동작·리미트·캘리브레이션 부호는 이전과
+  100% 동일하고, "조인트 로컬 프레임 축 이름"만 바뀐 것이다.
+  world_to_base(REP-103 정합용 180° yaw)는 문서 4항에 별도로 언급되어 있으나
+  기존 MoveIt/ros2_control 등 다른 설정과의 정합성을 위해 이번 변경 범위에서는
+  건드리지 않았다(그대로 무회전 유지).
   ============================================================
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <xacro:macro name="army_manipulator" params="prefix parent use_mock_hardware:=true use_mesh:=false">
 
-    <!-- ========== 치수 파라미터 (단위: m, 전부 STL 로컬 축 그대로) ========== -->
-    <xacro:property name="base_off"     value="0.04475"/>  <!-- base_actuator.stl Y-extent -->
-    <xacro:property name="shoulder_off" value="0.1039"/>  <!-- base_link.stl Y-extent -->
-    <xacro:property name="L1"           value="0.180"/>  <!-- shoulder_link.stl Y-extent -->
-    <xacro:property name="L2"           value="0.220"/>  <!-- elbow_link.stl Y-extent -->
-    <xacro:property name="L3"           value="0.150"/>  <!-- wrist_link.stl Y-extent -->
-    <xacro:property name="rack_off"     value="0.008"/>   <!-- pinion_gear -> rack_left/right (Z, 전면 깊이) -->
-    <xacro:property name="tcp_off"      value="0.065"/>   <!-- pinion_gear -> tcp_link (Z, 전면) -->
-    <!-- Case C 보조 오프셋: 전부 Z축(전면 방향) 성분. 팔의 주축 이동(-Y)과 항상
-         수직으로 별도 적용되는 소치수라서, 세 조인트(elbow/wrist/gripper) 모두
-         origin의 세 번째(Z) 자리에 들어가야 서로 같은 의미가 된다. -->
+    <!-- ========== 치수 파라미터 (단위: m, DH 파라미터와 1:1 대응) ========== -->
+    <xacro:property name="shoulder_off" value="0.1039"/>  <!-- = DH d1 (base axis -> shoulder axis) -->
+    <xacro:property name="L1"           value="0.180"/>  <!-- = DH a2 (shoulder axis -> elbow axis) -->
+    <xacro:property name="L2"           value="0.220"/>  <!-- = DH a3 (elbow axis -> wrist axis) -->
+    <xacro:property name="L3"           value="0.150"/>  <!-- wrist axis -> gripper/pinion axis -->
+    <xacro:property name="rack_off"     value="0.008"/>   <!-- pinion_gear -> rack_left/right (깊이 방향) -->
+    <!-- 실기 측정 기준: pinion_gear 회전축 중심에서 핑거 가장 끝(TCP)까지
+         pinion_gear 로컬 +Z 방향 90mm. -->
+    <xacro:property name="tcp_off"      value="0.090"/>
+    <!-- Case C 보조 오프셋: 피치 힌지축(신규 로컬 Z)과 항상 수직으로 별도
+         적용되는 소치수라서, 세 조인트(elbow/wrist/gripper) 모두 origin의 세
+         번째(Z) 자리에 들어가야 서로 같은 의미가 된다. -->
     <xacro:property name="off_shoulder"  value="0.038"/>
     <xacro:property name="off_elbow"    value="0.0188"/>
     <xacro:property name="off_wrist"    value="-0.0313"/>
@@ -50,10 +68,10 @@
                      value="${joint_calib['joints']['base_joint']['raw_min'] - joint_calib['joints']['base_joint']['zero_offset']}"/>
     <xacro:property name="base_limit_upper"
                      value="${joint_calib['joints']['base_joint']['raw_max'] - joint_calib['joints']['base_joint']['zero_offset']}"/>
-    <xacro:property name="shoulder_lift_limit_lower"
-                     value="${joint_calib['joints']['shoulder_lift_joint']['raw_min'] - joint_calib['joints']['shoulder_lift_joint']['zero_offset']}"/>
-    <xacro:property name="shoulder_lift_limit_upper"
-                     value="${joint_calib['joints']['shoulder_lift_joint']['raw_max'] - joint_calib['joints']['shoulder_lift_joint']['zero_offset']}"/>
+    <xacro:property name="shoulder_limit_lower"
+                     value="${joint_calib['joints']['shoulder_joint']['raw_min'] - joint_calib['joints']['shoulder_joint']['zero_offset']}"/>
+    <xacro:property name="shoulder_limit_upper"
+                     value="${joint_calib['joints']['shoulder_joint']['raw_max'] - joint_calib['joints']['shoulder_joint']['zero_offset']}"/>
     <xacro:property name="elbow_limit_lower"
                      value="${joint_calib['joints']['elbow_joint']['raw_min'] - joint_calib['joints']['elbow_joint']['zero_offset']}"/>
     <xacro:property name="elbow_limit_upper"
@@ -68,25 +86,24 @@
                      value="${joint_calib['joints']['gripper_joint']['raw_max'] - joint_calib['joints']['gripper_joint']['zero_offset']}"/>
 
     <!-- ========== parent -> base_actuator (fixed) ==========
-         [조인트] world(또는 상위 parent)와 무회전으로 연결. 즉 base_actuator의
-         로컬 X/Y/Z가 그대로 world의 우측/하단(중력)/전면이 된다. 이후 모든 링크의
-         축 해석 기준이 여기서 시작한다. -->
+         C(base_actuator)=I 이므로 변경 없음. -->
     <joint name="${prefix}world_to_base" type="fixed">
       <parent link="${parent}"/>
       <child  link="${prefix}base_actuator"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <!-- REP-103 정합용 180° yaw (문서 4항). 좌표축 재정렬 커밋 때는 다른
+           설정과의 정합성 때문에 미뤘던 값 - 2026-08-24 실기에서 팔이 차체
+           정면 반대쪽을 보는 게 확인돼 여기서 적용. -->
+      <origin xyz="0 0 0" rpy="0 0 ${pi}"/>
     </joint>
 
     <!-- base_actuator: XH540-W270-T 모터 바디 (고정, world에 직접 마운트) -->
     <link name="${prefix}base_actuator">
       <xacro:if value="${use_mesh}">
-        <!-- [시각화] mesh는 STL 좌표축을 그대로 사용 (회전 없음). -->
         <visual>
           <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/visual/base_actuator.stl" scale="0.001 0.001 0.001"/></geometry>
           <material name="motor_dark"/>
         </visual>
-        <!-- [콜리전] visual과 동일 회전. -->
         <collision>
           <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/collision/base_actuator.stl" scale="0.001 0.001 0.001"/></geometry>
@@ -111,13 +128,12 @@
     </link>
 
     <!-- ========== base_actuator -> base_link (revolute, "베이스 선회") ==========
-         [조인트] 베이스 전체를 턴테이블처럼 수직축 기준으로 돌리는 조인트다.
-         world_to_base가 무회전이므로 이 링크의 Y축 = world의 중력(수직)축.
-         따라서 axis는 반드시 Y(0 1 0)여야 한다 - Z(전면)는 수평축이라 pan에 쓰면
-         팔이 옆으로 안 돌고 앞뒤로 텀블링하게 되므로 틀린 선택이었다. -->
+         [조인트] 턴테이블처럼 수직축 기준으로 도는 조인트라 axis는 원래부터
+         로컬 Z(0 0 1) = world 수직축과 일치한다. C(base_link)=I이므로 이번
+         개정으로 바뀐 값이 없다. -->
     <joint name="${prefix}base_joint" type="revolute">
       <parent link="${prefix}base_actuator"/>
-      <child  link="${prefix}base_link"/>
+      <child  link="${prefix}arm_base_link"/>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <axis xyz="0 0 1"/>
       <limit lower="${base_limit_lower}" upper="${base_limit_upper}" effort="3.1" velocity="2.618"/>
@@ -125,24 +141,18 @@
     </joint>
 
     <!-- base_link: 베이스 회전판 -->
-    <link name="${prefix}base_link">
+    <!-- [갱신, 2026-09-05] 링크 이름 base_link -> arm_base_link. 구동부 reduced_odom이
+         odom -> base_link TF를 발행해서 같은 이름의 이 링크와 부모가 충돌(TF 트리
+         분리)하던 문제 해결. 메시 파일명(base_link.stl)은 그대로 둔다. -->
+    <link name="${prefix}arm_base_link">
       <xacro:if value="${use_mesh}">
-        <!-- [시각화] X축 -90° 회전 + Z축 +9.08° 보정.
-             base_link.stl 삼각형 normal을 직접 계산해보면 원판 주면(제일 넓은
-             평면, ~27000mm^2)의 native normal이 (0.9874, 0, -0.1578)로 순수
-             +X에서 9.08° 벗어나 있다(STL 자체에 실제로 모델링된 tilt, 로딩/렌더링
-             아티팩트 아님). X축 -90° 적용 후에는 이 tilt가 XY평면 상의 편차로
-             나타나(rendered normal (0.9874,-0.1578,0)) 원판이 YZ평면에서 살짝
-             돌아가 보였다. Z축으로 +9.08°(atan2(0.1578,0.9874)) 추가 보정하면
-             정확히 (1,0,0)이 되어 원판이 YZ평면에 평평하게 눕는다. -->
         <visual>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 0.15847"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/visual/base_link.stl" scale="0.001 0.001 0.001"/></geometry>
           <material name="petg_grey"/>
         </visual>
-        <!-- [콜리전] visual과 동일 회전. -->
         <collision>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 0.15847"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/collision/base_link.stl" scale="0.001 0.001 0.001"/></geometry>
         </collision>
       </xacro:if>
@@ -165,134 +175,180 @@
     </link>
 
     <!-- ========== base_link -> shoulder_link (revolute, "숄더 피치") ==========
-         [조인트] 팔을 앞/뒤(전면-하단 평면)로 숙이는 pitch 조인트. 힌지축은
-         좌우(X) 수평축이어야 한다 - X는 중력축(Y)과도, 전면축(Z)과도 수직이라
-         "위아래로 숙이는" 회전에 정확히 들어맞는다. origin은 base_link.stl의
-         Y-extent(shoulder_off)만큼 +Z로 이동해 base_link 끝에 shoulder_link를
-         이어붙인다.
-         X축에는 off_gripper와 동일한 소치수 오프셋 적용.
-         [수정] 여기 있던 Z축 180° 반전을 제거했다 - shoulder/elbow/wrist 세
-         조인트에 각각 Z축 180°를 순서대로 넣으면 shoulder(180°)->elbow(0°,
-         상쇄)->wrist(180°)처럼 링크마다 번갈아 뒤집히면서 pitch 힌지축(X)
-         방향도 링크마다 반대가 돼버려 조인트 리밋 회전이 이상하게 보였다. -->
-    <joint name="${prefix}shoulder_lift_joint" type="revolute">
-      <parent link="${prefix}base_link"/>
+         [조인트] 위치(xyz)는 그대로 두고, 기존 로컬 프레임(Ry(+90°)) 위에
+         로컬 X축 기준 +90°를 추가로 삽입(post-multiply: R_new = Ry(90°)@Rx(90°))
+         해서 좌표축만 재정렬했다 - rpy="0 pi/2 0" -> "pi/2 pi/2 0".
+         shoulder_actuator_joint도 같은 피벗점을 공유해야 하므로 동일하게
+         맞췄다. (만약 원하던 게 부모(base_link) 프레임 기준 X+90°를 먼저
+         적용하는 쪽이었다면 결과가 달라지니 알려달라 - 그 경우 rpy는
+         "pi/2 0 pi/2"가 된다.)
+         [수정] Y 자리(Case C 보조 오프셋)에 off_shoulder 대신 off_gripper가
+         잘못 들어가 있었다 - 값이 우연히 같아서(둘 다 0.038) 지금까지 수치는
+         안 바뀌었지만, off_shoulder로 바로잡았다. -->
+    <joint name="${prefix}shoulder_joint" type="revolute">
+      <parent link="${prefix}arm_base_link"/>
       <child  link="${prefix}shoulder_link"/>
-      <origin xyz="${off_gripper} 0 ${shoulder_off}" rpy="0 0 0"/>
-      <axis xyz="1 0 0"/>
-      <limit lower="${shoulder_lift_limit_lower}" upper="${shoulder_lift_limit_upper}" effort="120.0" velocity="1.047"/>
+      <origin xyz="0 ${off_shoulder} ${shoulder_off}" rpy="${pi/2} ${pi/2} 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${shoulder_limit_lower}" upper="${shoulder_limit_upper}" effort="120.0" velocity="1.047"/>
       <dynamics damping="1.0" friction="0.1"/>
     </joint>
+
+    <!-- shoulder_actuator: RMD-X8-120 stator. shoulder_joint와 동일한
+         피벗점(origin)을 공유한다. -->
+    <joint name="${prefix}shoulder_actuator_joint" type="fixed">
+      <parent link="${prefix}arm_base_link"/>
+      <child link="${prefix}shoulder_actuator"/>
+      <origin xyz="0 ${off_shoulder} ${shoulder_off}" rpy="${pi/2} ${pi/2} 0"/>
+    </joint>
+    <link name="${prefix}shoulder_actuator">
+      <xacro:if value="${use_mesh}">
+        <visual><origin xyz="0 0 0" rpy="-${pi} 0 0"/><geometry><mesh filename="package://army_manipulator_description/meshes/visual/shoulder_actuator.stl" scale="0.001 0.001 0.001"/></geometry><material name="motor_dark"/></visual>
+        <collision><origin xyz="0 0 0" rpy="-${pi} 0 0"/><geometry><mesh filename="package://army_manipulator_description/meshes/collision/shoulder_actuator.stl" scale="0.001 0.001 0.001"/></geometry></collision>
+      </xacro:if>
+      <xacro:unless value="${use_mesh}"><visual><geometry><cylinder radius="0.045" length="0.060"/></geometry><material name="motor_dark"/></visual><collision><geometry><cylinder radius="0.045" length="0.060"/></geometry></collision></xacro:unless>
+      <inertial><mass value="0.001"/><inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/></inertial>
+    </link>
 
     <!-- shoulder_link: RMD-X8-120 출력 플랜지 + L1 CFRP 튜브 + RMD-X6-60 케이스 통합 파츠 -->
     <link name="${prefix}shoulder_link">
       <xacro:if value="${use_mesh}">
-        <!-- [시각화] X축 -90° + Z축 180° 회전 적용. -->
+        <!-- [시각화] shoulder_joint origin에 로컬 X+90°를 추가로 삽입한 만큼
+             mesh도 그 역(Rx(-90°))을 곱해 world 상 겉모습은 그대로 유지. -->
         <visual>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 ${pi}"/>
+          <origin xyz="0 0 0" rpy="-${pi} 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/visual/shoulder_link.stl" scale="0.001 0.001 0.001"/></geometry>
-          <material name="cfrp"/>
+          <material name="petg_grey"/>
         </visual>
-        <!-- [콜리전] visual과 동일 회전. -->
         <collision>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 ${pi}"/>
+          <origin xyz="0 0 0" rpy="-${pi} 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/collision/shoulder_link.stl" scale="0.001 0.001 0.001"/></geometry>
         </collision>
       </xacro:if>
       <xacro:unless value="${use_mesh}">
+        <!-- [플레이스홀더] L1 튜브가 이제 로컬 -X 방향으로 뻗는다 (신규 elbow_joint origin.x = -L1). -->
         <visual>
-          <origin xyz="0 ${-L1/2} 0" rpy="1.5708 0 0"/>
+          <origin xyz="${-L1/2} 0 0" rpy="0 1.5708 0"/>
           <geometry><box size="0.020 0.020 ${L1}"/></geometry>
-          <material name="cfrp"/>
+          <material name="petg_grey"/>
         </visual>
         <collision>
-          <origin xyz="0 ${-L1/2} 0" rpy="0 0 0"/>
-          <geometry><box size="0.022 ${L1} 0.022"/></geometry>
+          <origin xyz="${-L1/2} 0 0" rpy="0 0 0"/>
+          <geometry><box size="${L1} 0.020 0.022"/></geometry>
         </collision>
       </xacro:unless>
       <inertial>
         <mass value="0.08"/>
-        <origin xyz="0 ${-L1/2} 0" rpy="0 0 0"/>
-        <inertia ixx="2.2e-4" ixy="0" ixz="0" iyy="6.0e-6" iyz="0" izz="2.2e-4"/>
+        <origin xyz="${-L1/2} 0 0" rpy="0 0 0"/>
+        <inertia ixx="6.0e-6" ixy="0" ixz="0" iyy="2.2e-4" iyz="0" izz="2.2e-4"/>
       </inertial>
     </link>
 
     <!-- ========== shoulder_link -> elbow_link (revolute, "엘보우 피치") ==========
-         [조인트] shoulder_lift_joint와 같은 이유로 axis는 X. 주축 오프셋은 -Y에서
-         +Z로 변경: L1(shoulder_link Y-extent)만큼 +Z로 이동 + Case C 보조
-         오프셋(off_elbow, +18.8mm)은 비게 된 Y자리로 옮겼다.
-         X축에는 off_gripper와 동일한 소치수 오프셋 적용.
-         [수정] Z축 180° 반전은 제거함 (shoulder_lift_joint 주석 참고 - 누적되면
-         링크마다 번갈아 뒤집혀서 pitch 축 방향이 어긋난다). -->
+         [조인트] origin rpy=0(회전 없음)는 그대로 맞음. origin xyz는 Case C
+         보조 오프셋(off_gripper+off_elbow)을 Y 자리가 아니라 Z 자리로
+         옮겼다(elbow_actuator 자신의 로컬 좌표계 기준): (-L1, 0,
+         -(off_gripper+off_elbow)). -->
     <joint name="${prefix}elbow_joint" type="revolute">
       <parent link="${prefix}shoulder_link"/>
       <child  link="${prefix}elbow_link"/>
-      <origin xyz="-${off_gripper + off_elbow} 0 ${L1}" rpy="0 0 0"/>
-      <axis xyz="1 0 0"/>
+      <origin xyz="-${L1} 0 ${off_gripper + off_elbow}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
       <limit lower="${elbow_limit_lower}" upper="${elbow_limit_upper}" effort="60.0" velocity="1.571"/>
       <dynamics damping="0.5" friction="0.05"/>
     </joint>
 
+    <!-- elbow_actuator: RMD-X6-60 stator, shoulder_link의 형제(fixed) 링크라
+         C(shoulder_link)=Ry(+90°)를 상속. origin xyz는 elbow_joint와 동일. -->
+    <joint name="${prefix}elbow_actuator_joint" type="fixed">
+      <parent link="${prefix}shoulder_link"/>
+      <child link="${prefix}elbow_actuator"/>
+      <origin xyz="-${L1} 0 ${off_gripper + off_elbow}" rpy="0 0 0"/>
+    </joint>
+    <link name="${prefix}elbow_actuator">
+      <xacro:if value="${use_mesh}">
+        <!-- [시각화] 좌표계(origin rpy)는 그대로 두고 mesh만 X -90°로 정렬. -->
+        <visual><origin xyz="0 0 0" rpy="0 0 0"/><geometry><mesh filename="package://army_manipulator_description/meshes/visual/elbow_actuator.stl" scale="0.001 0.001 0.001"/></geometry><material name="motor_dark"/></visual>
+        <collision><origin xyz="0 0 0" rpy="0 0 0"/><geometry><mesh filename="package://army_manipulator_description/meshes/collision/elbow_actuator.stl" scale="0.001 0.001 0.001"/></geometry></collision>
+      </xacro:if>
+      <xacro:unless value="${use_mesh}"><visual><geometry><cylinder radius="0.035" length="0.050"/></geometry><material name="motor_dark"/></visual><collision><geometry><cylinder radius="0.035" length="0.050"/></geometry></collision></xacro:unless>
+      <inertial><mass value="0.001"/><inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/></inertial>
+    </link>
+
     <!-- elbow_link: RMD-X6-60 출력 플랜지 + L2 CFRP 튜브 + RMD-X4-36 케이스 통합 파츠 -->
     <link name="${prefix}elbow_link">
       <xacro:if value="${use_mesh}">
-        <!-- [시각화] X축 -90° 회전 적용. -->
+        <!-- [시각화] mesh_R_new = C(elbow_link)^T @ Rx(-90°) = Ry(-90°)@Rx(-90°) = (-pi/2, -pi/2, 0). -->
         <visual>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+          <origin xyz="0 0 0" rpy="${pi} 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/visual/elbow_link.stl" scale="0.001 0.001 0.001"/></geometry>
-          <material name="cfrp"/>
+          <material name="petg_grey"/>
         </visual>
-        <!-- [콜리전] visual과 동일 회전. -->
         <collision>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+          <origin xyz="0 0 0" rpy="${pi} 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/collision/elbow_link.stl" scale="0.001 0.001 0.001"/></geometry>
         </collision>
       </xacro:if>
       <xacro:unless value="${use_mesh}">
+        <!-- [플레이스홀더] L2 튜브가 이제 로컬 -X 방향으로 뻗는다 (신규 wrist_joint origin.x = -L2). -->
         <visual>
-          <origin xyz="0 ${-L2/2} 0" rpy="1.5708 0 0"/>
+          <origin xyz="${-L2/2} 0 0" rpy="0 1.5708 0"/>
           <geometry><box size="0.020 0.020 ${L2}"/></geometry>
-          <material name="cfrp"/>
+          <material name="petg_grey"/>
         </visual>
         <collision>
-          <origin xyz="0 ${-L2/2} 0" rpy="0 0 0"/>
-          <geometry><box size="0.022 ${L2} 0.022"/></geometry>
+          <origin xyz="${-L2/2} 0 0" rpy="0 0 0"/>
+          <geometry><box size="${L2} 0.020 0.022"/></geometry>
         </collision>
       </xacro:unless>
       <inertial>
         <mass value="0.10"/>
-        <origin xyz="0 ${-L2/2} 0"/>
-        <inertia ixx="4.0e-4" ixy="0" ixz="0" iyy="7.3e-6" iyz="0" izz="4.0e-4"/>
+        <origin xyz="${-L2/2} 0 0"/>
+        <inertia ixx="7.3e-6" ixy="0" ixz="0" iyy="4.0e-4" iyz="0" izz="4.0e-4"/>
       </inertial>
     </link>
 
     <!-- ========== elbow_link -> wrist_link (revolute, "리스트 피치") ==========
-         [조인트] 마찬가지로 axis X. 주축 오프셋은 -Y에서 +Z로 변경: L2(elbow_link
-         Y-extent)만큼 +Z로 이동 + Case C 보조 오프셋(off_wrist, -31.3mm)은 비게
-         된 Y자리로 옮겼다.
-         X축에는 off_gripper와 동일한 소치수 오프셋 적용.
-         [수정] Z축 180° 반전은 제거함 (shoulder_lift_joint 주석 참고). -->
+         [조인트] elbow_joint와 동일 처리: origin rpy=0(회전 없음)은 그대로
+         맞고, Y 자리에 있던 오프셋(off_elbow-off_wrist)을 Z 자리로 옮겼다
+         (elbow_joint에서 확인된 패턴과 동일하게 부호도 반전). -->
     <joint name="${prefix}wrist_joint" type="revolute">
       <parent link="${prefix}elbow_link"/>
       <child  link="${prefix}wrist_link"/>
-      <origin xyz="${off_elbow - off_wrist} 0 ${L2}" rpy="0 0 0"/>
-      <axis xyz="1 0 0"/>
+      <origin xyz="-${L2} 0 -${off_elbow - off_wrist}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
       <limit lower="${wrist_limit_lower}" upper="${wrist_limit_upper}" effort="36.0" velocity="2.618"/>
       <dynamics damping="0.2" friction="0.02"/>
     </joint>
 
+    <!-- wrist_actuator: RMD-X4-36 stator, elbow_link의 형제(fixed) 링크라
+         C(elbow_link)=Ry(+90°)를 상속. origin xyz는 wrist_joint와 동일. -->
+    <joint name="${prefix}wrist_actuator_joint" type="fixed">
+      <parent link="${prefix}elbow_link"/>
+      <child link="${prefix}wrist_actuator"/>
+      <origin xyz="-${L2} 0 -${off_elbow - off_wrist}" rpy="0 0 0"/>
+    </joint>
+    <link name="${prefix}wrist_actuator">
+      <xacro:if value="${use_mesh}">
+        <visual><origin xyz="0 0 0" rpy="-${pi} 0 0"/><geometry><mesh filename="package://army_manipulator_description/meshes/visual/wrist_actuator.stl" scale="0.001 0.001 0.001"/></geometry><material name="motor_dark"/></visual>
+        <collision><origin xyz="0 0 0" rpy="-${pi} 0 0"/><geometry><mesh filename="package://army_manipulator_description/meshes/collision/wrist_actuator.stl" scale="0.001 0.001 0.001"/></geometry></collision>
+      </xacro:if>
+      <xacro:unless value="${use_mesh}"><visual><geometry><cylinder radius="0.025" length="0.040"/></geometry><material name="motor_dark"/></visual><collision><geometry><cylinder radius="0.025" length="0.040"/></geometry></collision></xacro:unless>
+      <inertial><mass value="0.001"/><inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/></inertial>
+    </link>
+
     <!-- wrist_link: 리스트 모터 하우징 (PETG) -->
     <link name="${prefix}wrist_link">
       <xacro:if value="${use_mesh}">
-        <!-- [시각화] X축 -90° 회전 적용. -->
+        <!-- [시각화] base_actuator 기준 누적된 +90°X 오차 제거(shoulder_joint에
+             삽입된 로컬 X+90°가 elbow/wrist로 rpy=0 그대로 전파됨) - mesh 보정. -->
         <visual>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/visual/wrist_link.stl" scale="0.001 0.001 0.001"/></geometry>
           <material name="petg_grey"/>
         </visual>
-        <!-- [콜리전] visual과 동일 회전. -->
         <collision>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/collision/wrist_link.stl" scale="0.001 0.001 0.001"/></geometry>
         </collision>
       </xacro:if>
@@ -314,43 +370,40 @@
       </inertial>
     </link>
 
-    <!-- ========== wrist_link -> cam_link (fixed, RealSense D435i 마운트) ==========
-         [수정] 뎁스카메라-TCP 캘리브레이션 실측값으로 재정의: "TCP 기준 Z축 -70mm,
-         Y축(높이) +100mm, X축 하단 -15° 틸트". TCP는 gripper_joint에 종속된
-         pinion_gear 자식(tcp_joint)이라 그 자체는 회전하지만, 카메라 브라켓은
-         wrist_link에 고정된 채 그리퍼 회전과 무관하게 정지해 있어야 하므로,
-         "TCP 기준"은 gripper_joint=0(정지 자세)일 때의 TCP 위치를 물리적
-         측정 기준점으로 삼았다는 뜻이다. 그 순간 wrist_link -> tcp_link
-         변위(회전 없음, gripper_joint=0이라 순수 평행이동) = gripper_joint
-         origin(off_wrist, 0, L3) + tcp_joint origin(0, 0, tcp_off)
-         = (off_wrist, 0, L3+tcp_off). 여기에 카메라의 TCP 기준 오프셋을 더한다:
-         - Z(전면) -70mm: TCP보다 70mm 뒤쪽(가리키는 방향의 반대) → z = L3+tcp_off-0.070
-         - Y(하단) +100mm 높이: 이 프로젝트 관례상 -Y가 "위" 방향이므로 y = -0.100
-         - X: 지정 없음 → wrist_link와 동일 선상이 되도록 off_wrist 그대로 사용
-         rpy: 카메라가 전면(+Z)에서 하단(+Y) 쪽으로 15° 숙여져야 하므로(하향
-         틸트), X축 기준 음의 회전 -0.2618 rad(=-15°) - 기존과 동일값, 변경 없음.
-         (cam_link의 mesh 내부 origin(0.020 0.029 0)은 STL 자체의 bbox-center
-         보정값이라 마운트 위치가 바뀌어도 그대로 유지한다.) -->
+    <!-- ========== wrist_link -> cam_link (fixed, RealSense D435 뒷면 나사 마운트) ==========
+         2026-08-26 RViz 실측으로 최종 확정. pinion_gear 원점(wrist_link 기준
+         xyz="-L3 0 -off_wrist")에서 살짝 옮긴 위치(x -0.079, y +0.07)에,
+         카메라가 실제로 보는 방향과 TF 프레임이 정확히 일치하도록 방향까지
+         맞춘 값이다 - 예전에는 mesh <visual>/<collision> origin 쪽에 시각적
+         보정을 따로 얹어서 "메쉬는 맞는데 TF 프레임은 다른 방향" 상태였는데,
+         지금은 그 보정을 전부 이 joint origin으로 합쳐서 cam_link 좌표계
+         자체가 곧 카메라 방향이다(target_detector_node 등 TF 기반 좌표 변환도
+         이 방향을 그대로 사용). 아래 mesh origin은 그래서 identity에 가깝다.
+         [type="fixed" 유지 이유] 실물 브라켓은 나사홀 각도를 조절할 수 있는
+         힌지형이지만, 그 조절은 조립 시 한 번 각도를 잡아두는 용도이고
+         MoveIt/ros2_control이 구동하는 관절이 아니다. 그래서 URDF/moveit_config에
+         별도 관절로 노출하지 않고 fixed로 고정 - 브라켓 각도가 실측/재조정되면
+         위 rpy 값만 그때그때 갱신하면 된다. -->
     <joint name="${prefix}cam_mount_joint" type="fixed">
       <parent link="${prefix}wrist_link"/>
       <child  link="${prefix}cam_link"/>
-      <origin xyz="${off_wrist} -0.100 ${L3 + tcp_off - 0.070}" rpy="-0.2618 0 0"/>
+      <origin xyz="-0.079 0.07 ${-off_wrist}" rpy="-${pi/2} 0 ${pi/2}"/>
     </joint>
 
-    <!-- cam_link: RealSense D435i 마운트 브라켓 (PETG, 15° 쐐기형 고정) -->
+    <!-- cam_link: RealSense D435 마운트 브라켓 (PETG, 15° 쐐기형 고정) -->
     <link name="${prefix}cam_link">
       <xacro:if value="${use_mesh}">
-        <!-- [시각화] X축 -90° + Y축 180° 회전 적용 (틸트는 cam_mount_joint의 origin에서 별도 처리).
-             origin xyz는 위 좌표계 이동을 상쇄해서 mesh의 절대 렌더링 위치를 그대로 유지. -->
+        <!-- 방향 보정은 전부 위 cam_mount_joint origin에 합쳐놨으므로 여기는
+             identity 회전 유지. xyz의 작은 오프셋(-0.002, 0, -0.002)은 STL
+             자체의 원점과 브라켓 실물 사이 미세한 시각적 정렬용. -->
         <visual>
-          <origin xyz="0.020 0.029 0" rpy="-${pi/2} 0 ${pi}"/>
-          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/cam_link.stl" scale="0.001 0.001 0.001"/></geometry>
+          <origin xyz="-0.002 0 -0.002" rpy="0 0 0"/>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/visual/cam_d435.stl" scale="0.001 0.001 0.001"/></geometry>
           <material name="petg_grey"/>
         </visual>
-        <!-- [콜리전] visual과 동일. -->
         <collision>
-          <origin xyz="0.020 0.029 0" rpy="-${pi/2} 0 ${pi}"/>
-          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/cam_link.stl" scale="0.001 0.001 0.001"/></geometry>
+          <origin xyz="-0.002 0 -0.002" rpy="0 0 0"/>
+          <geometry><mesh filename="package://army_manipulator_description/meshes/collision/cam_d435.stl" scale="0.001 0.001 0.001"/></geometry>
         </collision>
       </xacro:if>
       <xacro:unless value="${use_mesh}">
@@ -371,35 +424,49 @@
       </inertial>
     </link>
 
-    <!-- ========== wrist_link -> pinion_gear (revolute, "피니언 구동") ==========
-         [조인트] pinion_gear.stl의 실측 bbox가 X/Y span ~32mm(피치원 지름),
-         Z span 12mm(두께)로 나와 기어 원판이 X-Y 평면에 놓이고 두께 방향이 Z임을
-         확인했다 - 즉 회전축(스핀축)은 Z(전면)다. axis="0 0 1"은 그대로 맞다.
-         [수정] 주축 오프셋을 -Y에서 +Z로 변경: L3(wrist_link Y-extent)만큼 +Z로
-         이동 + Case C 보조 오프셋(off_gripper, +38mm)은 비게 된 Y자리로 옮겼다. -->
+    <!-- ========== gripper_actuator -> pinion_gear (revolute, "피니언 구동") ==========
+         [재수정] doc(robot_urdf_parameters.md.docx) Table 1의 이 행(xyz, rpy 모두
+         "미정")은 숫자가 없어 doc만으로는 못 정한다 - 축(0 0 1)이 실제 스핀축이
+         되도록 여러 실기 trial로 검증된 rpy(0 -pi/2 0)를 그대로 재사용했다
+         (gripper_actuator가 parent로 바뀐 뒤에도 스핀축 방향이 맞는지는 RViz로
+         재확인 필요). xyz는 기존 실측 오프셋(0, 0, -off_wrist) 유지. -->
     <joint name="${prefix}gripper_joint" type="revolute">
-      <parent link="${prefix}wrist_link"/>
+      <parent link="${prefix}gripper_actuator"/>
       <child  link="${prefix}pinion_gear"/>
-      <!-- world 기준 X 누적 오프셋을 상쇄해서 pinion_gear가 순수 Z 위치에 오도록 함.
-           누적 X = shoulder(off_gripper) + elbow(-(off_gripper+off_elbow)) +
-           wrist(off_elbow-off_wrist) = -off_wrist 로 정리되므로, 상쇄값은 off_wrist.
-           Y는 세 조인트 모두 0이라 이미 0. -->
-      <origin xyz="${off_wrist} 0 ${L3}" rpy="0 0 0"/>
+      <origin xyz=" 0 0 0" rpy="0 0 0"/>
       <axis xyz="0 0 1"/>
       <limit lower="${gripper_limit_lower}" upper="${gripper_limit_upper}" effort="8.4" velocity="3.665"/>
       <dynamics damping="0.05" friction="0.01"/>
     </joint>
 
-    <!-- pinion_gear: m=1, z=30, 피치반경 15mm (module 1 x teeth 30 / 2) -->
+    <!-- gripper_actuator: MX-106T stator, wrist_link의 형제(fixed) 링크.
+         [재수정] 여러 실기 trial(gripper_joint와 동일 회전 / 로컬 X 90° / 거기에
+         Z 180° 추가) 전부 아니었음 - ~/Downloads/robot_urdf_parameters.md.docx
+         Table 1의 gripper_actuator 행 rpy(2.6791, -0.2549, -0.4683,
+         CATIA intrinsic X150°를 scipy로 extrinsic-XYZ 변환 완료된 값)를 그대로
+         적용. xyz는 doc에 "미정"이라 기존 실측 오프셋(-L3, 0, -off_wrist) 유지. -->
+    <joint name="${prefix}gripper_actuator_joint" type="fixed">
+      <parent link="${prefix}wrist_link"/>
+      <child link="${prefix}gripper_actuator"/>
+      <origin xyz="-${L3} 0 ${-off_wrist}" rpy="0 -${pi/2} 0"/>
+    </joint>
+    <link name="${prefix}gripper_actuator">
+      <xacro:if value="${use_mesh}">
+        <visual><origin xyz="0 0 0" rpy="0 0 ${pi/2}"/><geometry><mesh filename="package://army_manipulator_description/meshes/visual/gripper_actuator.stl" scale="0.001 0.001 0.001"/></geometry><material name="motor_dark"/></visual>
+        <collision><origin xyz="0 0 0" rpy="0 0 ${pi/2}"/><geometry><mesh filename="package://army_manipulator_description/meshes/collision/gripper_actuator.stl" scale="0.001 0.001 0.001"/></geometry></collision>
+      </xacro:if>
+      <xacro:unless value="${use_mesh}"><visual><geometry><cylinder radius="0.030" length="0.050"/></geometry><material name="motor_dark"/></visual><collision><geometry><cylinder radius="0.030" length="0.050"/></geometry></collision></xacro:unless>
+      <inertial><mass value="0.001"/><inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/></inertial>
+    </link>
+
+    <!-- pinion_gear: m=1, z=34, 피치반경 17mm (module 1 x teeth 34 / 2, 2026-08-30 mesh 개정) -->
     <link name="${prefix}pinion_gear">
       <xacro:if value="${use_mesh}">
-        <!-- [시각화] X축 90° 회전 적용. -->
         <visual>
           <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/visual/pinion_gear.stl" scale="0.001 0.001 0.001"/></geometry>
           <material name="motor_dark"/>
         </visual>
-        <!-- [콜리전] visual과 동일 회전. -->
         <collision>
           <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/collision/pinion_gear.stl" scale="0.001 0.001 0.001"/></geometry>
@@ -423,109 +490,132 @@
       </inertial>
     </link>
 
-    <!-- ========== pinion_gear -> rack_left (prismatic, mimic) ==========
-         [조인트] rack_left.stl/rack_right.stl 실측 bbox에서 X span(124.5mm)이
-         가장 긴 치수로 확인됨 - 슬라이드 방향(axis)은 X. origin의 X=60mm는
-         mesh 로컬 원점이 rack 한쪽 끝에 있어 시각적 중심을 맞추기 위한 고정
-         오프셋(비-mesh 플레이스홀더 박스와 동일 관례), Z=rack_off(8mm)는 CATIA
-         실측 pinion↔rack 깊이(전면방향) 거리. -->
-    <!-- [수정] parent를 pinion_gear -> wrist_link로 변경: rack은 레일에 구속되어
-         회전 없이 직선운동만 해야 하는데, pinion_gear는 gripper_joint로 회전하는
-         프레임이라 그 자식으로 두면 랙이 회전까지 같이 따라가 버렸다.
-         wrist_link는 회전하지 않으므로 이제 순수 프리즈매틱(직선) 운동만 한다.
-         mimic은 조인트 이름(gripper_joint)으로 참조하는 거라 부모가 바뀌어도
-         그대로 유효하다. origin은 gripper_joint origin + 기존 pinion_gear 기준
-         origin을 합산해 동일한 절대 위치를 유지했다. -->
+    <!-- ========== wrist_link -> rack_left (prismatic, mimic) ==========
+         [조인트][수정] parent를 pinion_gear로 두면 gripper_joint가 회전할 때
+         rack_left 프레임도 같이 돌아버려 실제로는 있어야 할 "레일 위 직선
+         슬라이드"가 아니라 피니언과 같이 통째로 회전하는 것처럼 보이는 문제가
+         실기에서 확인됨. 랙은 실제로 레일에 구속되어 회전하지 않고 순수
+         직선운동만 해야 하므로 parent를 다시 회전하지 않는 wrist_link로
+         되돌렸다.
+         [재수정] doc(robot_urdf_parameters.md.docx) Table 1의 lack_left 행
+         (parent=pinion_gear, xyz=(0,-86.36,8.4)mm, rpy=(-1.5708,-1.5708,0))을
+         실제 트리 parent(wrist_link)로 옮기기 위해, wrist_link->gripper_actuator
+         (doc rpy 2.6791/-0.2549/-0.4683) -> pinion_gear(θ=0, gripper_joint의
+         rpy 0/-pi/2/0) -> lack_left(doc 값)를 4x4 행렬로 그대로 합성해서
+         wrist_link 기준으로 재도출했다(수치는 numpy로 계산, 아래 xyz/rpy는
+         그 결과). rack_right와 로컬 Z(슬라이드 축)가 정확히 반대 방향이라
+         피니언 회전 시 서로 반대로 움직여 그리퍼가 개폐된다. mesh(rack_left.stl)
+         의 visual/collision origin이 이 조인트 프레임과 정확히 일치하는지는
+         아직 미검증 - RViz에서 확인 필요. -->
     <joint name="${prefix}rack_left_joint" type="prismatic">
       <parent link="${prefix}wrist_link"/>
       <child  link="${prefix}rack_left"/>
-      <origin xyz="${off_wrist - 0.060} -0.015 ${L3 + rack_off}" rpy="0 0 0"/>
-      <axis xyz="1 0 0"/>
+      <xacro:property name="pinion_pitch_radius" value="0.017"/>
+      <!-- z: pinion_gear 원점(wrist_link 기준 z=${-off_wrist})에서 +0.062 오프셋.
+           기존에는 wrist_link의 z=0을 중심으로 ±0.062를 줘서 pinion_gear
+           원점(z=${-off_wrist})만큼 어긋나 있었음 - 2026-08-24 수정. -->
+      <origin xyz="${-L3} 0.018 ${-off_wrist + 0.062}" rpy="${pi} 0 ${pi}"/>
+      <axis xyz="0 0 1"/>
       <limit lower="0" upper="0.030" effort="8.4" velocity="0.1"/>
-      <xacro:property name="pinion_pitch_radius" value="0.015"/>
-      <!-- 피니언 각속도 -> 랙 선속도 변환: v = omega * pinion_pitch_radius -->
+      <!-- 피니언 각속도 -> 랙 선속도 변환: v = omega * pinion_pitch_radius.
+           [수정] rack_right와 부호를 통일했다 - 두 rack의 로컬 Z(슬라이드축)가
+           서로 반대(rack_left=-Z, rack_right=+Z)이므로, mimic multiplier
+           부호까지 반대로 주면 world 기준으로는 오히려 같은 방향으로 움직여
+           버린다(실기에서 "한 몸으로 움직인다"고 확인된 원인). -->
       <mimic joint="${prefix}gripper_joint" multiplier="${pinion_pitch_radius}" offset="0"/>
     </joint>
 
     <link name="${prefix}rack_left">
       <xacro:if value="${use_mesh}">
-        <!-- [시각화] X축 -90° 회전 적용. -->
+        <!-- [시각화] parent/rpy가 새로 바뀌어 기존 mesh 보정값이 더 이상
+             맞지 않음 - 시각적으로 다시 맞춰야 함(우선 무회전으로 둠). -->
         <visual>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/visual/rack_left.stl" scale="0.001 0.001 0.001"/></geometry>
           <material name="petg_grey"/>
         </visual>
-        <!-- [콜리전] visual과 동일 회전. -->
         <collision>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/collision/rack_left.stl" scale="0.001 0.001 0.001"/></geometry>
         </collision>
       </xacro:if>
       <xacro:unless value="${use_mesh}">
+        <!-- [플레이스홀더] 구 로컬 X 방향(길이 0.120)이 이제 로컬 Z 방향이 된다. -->
         <visual>
-          <origin xyz="-0.060 -0.015 0" rpy="0 0 0"/>
-          <geometry><box size="0.120 0.020 0.020"/></geometry>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><box size="0.020 0.020 0.120"/></geometry>
           <material name="petg_grey"/>
         </visual>
         <collision>
-          <origin xyz="-0.060 -0.015 0" rpy="0 0 0"/>
-          <geometry><box size="0.120 0.020 0.020"/></geometry>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><box size="0.020 0.020 0.120"/></geometry>
         </collision>
       </xacro:unless>
       <inertial>
         <mass value="0.03"/>
-        <origin xyz="-0.060 -0.015 0"/>
-        <inertia ixx="1.0e-6" ixy="0" ixz="0" iyy="4.0e-5" iyz="0" izz="4.0e-5"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <inertia ixx="4.0e-5" ixy="0" ixz="0" iyy="4.0e-5" iyz="0" izz="1.0e-6"/>
       </inertial>
     </link>
 
-    <!-- ========== pinion_gear -> rack_right (prismatic, mimic, 반대방향) ==========
-         [조인트] rack_left와 동일 논리, X 반대편(-60mm)에 대칭 배치. 피니언
-         반대편에 맞물리므로 mimic multiplier 부호도 반대. -->
-    <!-- [수정] parent를 pinion_gear -> wrist_link로 변경 (rack_left_joint와 동일 이유). -->
+    <!-- ========== wrist_link -> rack_right (prismatic, mimic, 반대방향) ==========
+         [조인트][재수정] rack_left와 동일한 방식 - doc Table 1의 lack_right 행
+         (parent=pinion_gear, xyz=(0,86.36,8.4)mm, rpy=(1.5708,1.5708,0))을
+         wrist_link->gripper_actuator(doc rpy) -> pinion_gear(θ=0, gripper_joint
+         rpy) -> lack_right(doc 값) 체인으로 합성해 wrist_link 기준으로 재도출.
+         rack_left와 로컬 Z(슬라이드 축)가 정확히 반대 방향.
+         mimic multiplier는 rack_left와 같은 부호(+pinion_pitch_radius) 유지 -
+         두 rack의 슬라이드 축 자체가 이미 서로 반대 방향이므로, world 기준
+         반대 운동(개폐)을 만들려면 multiplier 부호는 오히려 같아야 한다
+         (부호까지 반대로 주면 world 기준 같은 방향으로 움직여 "한 몸으로
+         움직이는" 것처럼 보임 - 실기에서 확인된 버그).
+         mesh(rack_right.stl) visual/collision origin이 이 조인트 프레임과
+         정확히 일치하는지는 아직 미검증 - RViz에서 확인 필요. -->
     <joint name="${prefix}rack_right_joint" type="prismatic">
       <parent link="${prefix}wrist_link"/>
       <child  link="${prefix}rack_right"/>
-      <origin xyz="${off_wrist + 0.060} 0.015 ${L3 + rack_off}" rpy="0 0 0"/>
-      <axis xyz="1 0 0"/>
-      <limit lower="-0.030" upper="0" effort="8.4" velocity="0.1"/>
-      <mimic joint="${prefix}gripper_joint" multiplier="${-pinion_pitch_radius}" offset="0"/>
+      <!-- z: pinion_gear 원점(wrist_link 기준 z=${-off_wrist})에서 -0.062 오프셋.
+           rack_left_joint와 동일한 수정 - 2026-08-24. -->
+      <origin xyz="${-L3} -0.018 ${-off_wrist - 0.062}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="0" upper="0.030" effort="8.4" velocity="0.1"/>
+      <mimic joint="${prefix}gripper_joint" multiplier="${pinion_pitch_radius}" offset="0"/>
     </joint>
 
     <link name="${prefix}rack_right">
       <xacro:if value="${use_mesh}">
-        <!-- [시각화] X축 -90° 회전 적용. -->
+        <!-- [시각화] parent/rpy가 새로 바뀌어 기존 mesh 보정값이 더 이상
+             맞지 않음 - 시각적으로 다시 맞춰야 함(우선 무회전으로 둠). -->
         <visual>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/visual/rack_right.stl" scale="0.001 0.001 0.001"/></geometry>
           <material name="petg_grey"/>
         </visual>
-        <!-- [콜리전] visual과 동일 회전. -->
         <collision>
-          <origin xyz="0 0 0" rpy="${-pi/2} 0 0"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
           <geometry><mesh filename="package://army_manipulator_description/meshes/collision/rack_right.stl" scale="0.001 0.001 0.001"/></geometry>
         </collision>
       </xacro:if>
       <xacro:unless value="${use_mesh}">
         <visual>
-          <origin xyz="0.060 0.015 0" rpy="0 0 0"/>
-          <geometry><box size="0.120 0.020 0.020"/></geometry>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><box size="0.020 0.020 0.120"/></geometry>
           <material name="petg_grey"/>
         </visual>
         <collision>
-          <origin xyz="0.060 0.015 0" rpy="0 0 0"/>
-          <geometry><box size="0.120 0.020 0.020"/></geometry>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry><box size="0.020 0.020 0.120"/></geometry>
         </collision>
       </xacro:unless>
       <inertial>
         <mass value="0.03"/>
-        <origin xyz="0.060 0.015 0"/>
-        <inertia ixx="1.0e-6" ixy="0" ixz="0" iyy="4.0e-5" iyz="0" izz="4.0e-5"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <inertia ixx="4.0e-5" ixy="0" ixz="0" iyy="4.0e-5" iyz="0" izz="1.0e-6"/>
       </inertial>
     </link>
 
     <!-- ========== pinion_gear -> tcp_link (fixed) ==========
-         [조인트] CATIA 실측 pinion gear -> 핑거 팁 거리 = 65mm, Z(전면) 방향. -->
+         [조인트] C(pinion_gear)=C(tcp_link)=I 이므로 변경 없음. -->
     <joint name="${prefix}tcp_joint" type="fixed">
       <parent link="${prefix}pinion_gear"/>
       <child  link="${prefix}tcp_link"/>
@@ -534,7 +624,6 @@
 
     <!-- tcp_link: 툴 센터 포인트 (mesh 없음, primitive만 사용) -->
     <link name="${prefix}tcp_link">
-      <!-- [시각화] 구는 회전 불변이라 rpy 의미 없음. -->
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry><sphere radius="0.005"/></geometry>

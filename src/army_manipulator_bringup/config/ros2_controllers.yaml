@@ -5,17 +5,31 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
+    # OFF/MANUAL 전용. AUTO controller들과 동시에 활성화하면 안 된다.
+    position_controller:
+      type: forward_command_controller/ForwardCommandController
+
     arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
     gripper_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
+position_controller:
+  ros__parameters:
+    joints:
+      - base_joint
+      - shoulder_joint
+      - elbow_joint
+      - wrist_joint
+      - gripper_joint
+    interface_name: position
+
 arm_controller:
   ros__parameters:
     joints:
       - base_joint
-      - shoulder_lift_joint
+      - shoulder_joint
       - elbow_joint
       - wrist_joint
     command_interfaces:

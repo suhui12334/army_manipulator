@@ -19,9 +19,21 @@
   <xacro:macro name="army_manipulator_ros2_control" params="prefix use_mock_hardware">
 
     <xacro:arg name="dxl_port_name" default="/dev/ttyUSB0"/>
-    <xacro:arg name="dxl_baud_rate" default="57600"/>
+    <xacro:arg name="dxl_baud_rate" default="1000000"/>
     <xacro:arg name="rmd_ifname" default="can_arm"/>
-    <xacro:arg name="rmd_timeout" default="100"/>
+    <xacro:arg name="rmd_timeout" default="0"/>
+    <xacro:arg name="shoulder_actuator_id" default="4"/>
+    <xacro:arg name="elbow_actuator_id" default="5"/>
+    <xacro:arg name="wrist_actuator_id" default="6"/>
+    <xacro:arg name="shoulder_max_velocity" default="15.0"/>
+    <xacro:arg name="elbow_max_velocity" default="5.0"/>
+    <xacro:arg name="wrist_max_velocity" default="30.0"/>
+    <xacro:arg name="shoulder_sign" default="1"/>
+    <xacro:arg name="elbow_sign" default="-1"/>
+    <xacro:arg name="wrist_sign" default="-1"/>
+    <xacro:arg name="shoulder_q_offset" default="0.0"/>
+    <xacro:arg name="elbow_q_offset" default="0.0"/>
+    <xacro:arg name="wrist_q_offset" default="0.0"/>
 
     <xacro:if value="${use_mock_hardware}">
 
@@ -34,7 +46,7 @@
           <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
           <state_interface name="velocity"/>
         </joint>
-        <joint name="${prefix}shoulder_lift_joint">
+        <joint name="${prefix}shoulder_joint">
           <command_interface name="position"/>
           <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
           <state_interface name="velocity"/>
@@ -53,6 +65,18 @@
           <command_interface name="position"/>
           <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
           <state_interface name="velocity"/>
+          <!-- [추가] 실제 하드웨어(dynamixel_hardware_interface)는 이 조인트에
+               이미 effort(Present Current 레지스터 매핑)를 노출한다. 파지 성공
+               판정 노드가 mock/real 양쪽에서 동일한 /joint_states 구조를 보게
+               하려고 mock에도 자리만 맞춰둔다 - mock_components/GenericSystem은
+               실제 전류가 없어 항상 0.0으로 고정된다.
+
+               TODO(current-unit): dxl_model/*.model의 Present Current는
+               변환계수 1.0인 raw 값 그대로 나온다 (Dynamixel 스펙상 1 LSB ≈
+               2.69mA). 파지 성공 판정 노드에서 /joint_states의 gripper_joint
+               effort 값을 그대로 임계값과 비교하지 말고, 반드시 2.69mA를
+               곱해서 실제 mA로 변환한 뒤 threshold를 잡을 것. -->
+          <state_interface name="effort"><param name="initial_value">0.0</param></state_interface>
         </joint>
         <joint name="${prefix}rack_left_joint">
           <param name="mimic">${prefix}gripper_joint</param>
@@ -83,6 +107,7 @@
           <param name="number_of_transmissions">2</param>
           <param name="disable_torque_at_init">true</param>
           <param name="error_timeout_ms">1000</param>
+          <param name="position_limit_rejection_margin">0.0872665</param>
           <param name="transmission_to_joint_matrix">1,0,0,1</param>
           <param name="joint_to_transmission_matrix">1,0,0,1</param>
           <param name="dynamixel_state_pub_msg_name">dynamixel_hardware_interface/dxl_state</param>
@@ -94,13 +119,26 @@
         <!-- joint/gpio 순서가 transmission_to_joint_matrix(항등행렬)로 1:1 매핑되므로
              순서를 반드시 gripper -> base 로 맞춘다 (dolbotZ 실측 순서와 동일). -->
         <joint name="${prefix}gripper_joint">
-          <command_interface name="position"/>
+          <!-- JECS calibration: pulse 1151 is gripper_joint=0.  The Dynamixel
+               model coordinate is pulse*2pi/4096-pi, hence this offset. -->
+          <param name="position_zero_offset">-1.375980766733627</param>
+          <param name="position_direction">1.0</param>
+          <param name="position_wraparound">true</param>
+          <command_interface name="position"><param name="min">${gripper_limit_lower}</param><param name="max">${gripper_limit_upper}</param></command_interface>
           <state_interface name="position"/>
           <state_interface name="velocity"/>
           <state_interface name="effort"/>
         </joint>
         <joint name="${prefix}base_joint">
-          <command_interface name="position"/>
+          <!-- Present Position may restart on an equivalent +/-4096-count
+               branch.  Publish a bounded ROS state, but send each command on
+               the equivalent branch nearest to the current raw position. -->
+          <param name="position_zero_offset">-9.314331344042</param>
+          <param name="position_direction">1.0</param>
+          <param name="position_wraparound">false</param>
+          <param name="position_state_wraparound">true</param>
+          <param name="position_command_nearest_turn">true</param>
+          <command_interface name="position"><param name="min">${base_limit_lower}</param><param name="max">${base_limit_upper}</param></command_interface>
           <state_interface name="position"/>
           <state_interface name="velocity"/>
           <state_interface name="effort"/>
@@ -129,16 +167,18 @@
         </gpio>
       </ros2_control>
 
-      <!-- ===== shoulder_lift_joint : RMD-X8-120 (CAN, ID4) ===== -->
+      <!-- ===== shoulder_joint : RMD-X8-120 (CAN, ID4) ===== -->
       <ros2_control name="${prefix}shoulder_actuator" type="actuator">
         <hardware>
           <plugin>rmd_hardware_interface/MyActuatorRmdHardwareInterface</plugin>
           <param name="ifname">$(arg rmd_ifname)</param>
-          <param name="actuator_id">4</param>
+          <param name="actuator_id">$(arg shoulder_actuator_id)</param>
           <!-- TODO(rmd-tuning): torque_constant/max_velocity/current 관련 값은
                RMD-X8-120 데이터시트 기준 임시값. 실측 후 조정 필요. -->
           <param name="torque_constant">1.0</param>
-          <param name="max_velocity">1.047</param>
+          <param name="max_velocity">$(arg shoulder_max_velocity)</param>
+          <param name="sign">$(arg shoulder_sign)</param>
+          <param name="q_offset">$(arg shoulder_q_offset)</param>
           <param name="velocity_alpha">0.1</param>
           <param name="effort_alpha">0.1</param>
           <param name="software_current_limit">10.0</param>
@@ -147,11 +187,13 @@
           <param name="current_retreat_velocity">0.1</param>
           <param name="current_max_retreat_distance">0.174533</param>
           <param name="timeout">$(arg rmd_timeout)</param>
+          <param name="can_receive_timeout_ms">100</param>
+          <param name="initial_feedback_timeout_ms">3000</param>
+          <param name="feedback_timeout_ms">500</param>
+          <param name="position_limit_rejection_margin">0.0872665</param>
         </hardware>
-        <joint name="${prefix}shoulder_lift_joint">
-          <command_interface name="position"/>
-          <command_interface name="velocity"/>
-          <command_interface name="effort"/>
+        <joint name="${prefix}shoulder_joint">
+          <command_interface name="position"><param name="min">${shoulder_limit_lower}</param><param name="max">${shoulder_limit_upper}</param></command_interface>
           <state_interface name="position"/>
           <state_interface name="velocity"/>
           <state_interface name="effort"/>
@@ -163,9 +205,11 @@
         <hardware>
           <plugin>rmd_hardware_interface/MyActuatorRmdHardwareInterface</plugin>
           <param name="ifname">$(arg rmd_ifname)</param>
-          <param name="actuator_id">5</param>
+          <param name="actuator_id">$(arg elbow_actuator_id)</param>
           <param name="torque_constant">1.0</param>
-          <param name="max_velocity">1.571</param>
+          <param name="max_velocity">$(arg elbow_max_velocity)</param>
+          <param name="sign">$(arg elbow_sign)</param>
+          <param name="q_offset">$(arg elbow_q_offset)</param>
           <param name="velocity_alpha">0.1</param>
           <param name="effort_alpha">0.1</param>
           <param name="software_current_limit">10.0</param>
@@ -174,11 +218,13 @@
           <param name="current_retreat_velocity">0.1</param>
           <param name="current_max_retreat_distance">0.174533</param>
           <param name="timeout">$(arg rmd_timeout)</param>
+          <param name="can_receive_timeout_ms">100</param>
+          <param name="initial_feedback_timeout_ms">3000</param>
+          <param name="feedback_timeout_ms">500</param>
+          <param name="position_limit_rejection_margin">0.0872665</param>
         </hardware>
         <joint name="${prefix}elbow_joint">
-          <command_interface name="position"/>
-          <command_interface name="velocity"/>
-          <command_interface name="effort"/>
+          <command_interface name="position"><param name="min">${elbow_limit_lower}</param><param name="max">${elbow_limit_upper}</param></command_interface>
           <state_interface name="position"/>
           <state_interface name="velocity"/>
           <state_interface name="effort"/>
@@ -190,9 +236,11 @@
         <hardware>
           <plugin>rmd_hardware_interface/MyActuatorRmdHardwareInterface</plugin>
           <param name="ifname">$(arg rmd_ifname)</param>
-          <param name="actuator_id">6</param>
+          <param name="actuator_id">$(arg wrist_actuator_id)</param>
           <param name="torque_constant">1.0</param>
-          <param name="max_velocity">2.618</param>
+          <param name="max_velocity">$(arg wrist_max_velocity)</param>
+          <param name="sign">$(arg wrist_sign)</param>
+          <param name="q_offset">$(arg wrist_q_offset)</param>
           <param name="velocity_alpha">0.1</param>
           <param name="effort_alpha">0.1</param>
           <param name="software_current_limit">10.0</param>
@@ -201,11 +249,13 @@
           <param name="current_retreat_velocity">0.1</param>
           <param name="current_max_retreat_distance">0.174533</param>
           <param name="timeout">$(arg rmd_timeout)</param>
+          <param name="can_receive_timeout_ms">100</param>
+          <param name="initial_feedback_timeout_ms">3000</param>
+          <param name="feedback_timeout_ms">500</param>
+          <param name="position_limit_rejection_margin">0.0872665</param>
         </hardware>
         <joint name="${prefix}wrist_joint">
-          <command_interface name="position"/>
-          <command_interface name="velocity"/>
-          <command_interface name="effort"/>
+          <command_interface name="position"><param name="min">${wrist_limit_lower}</param><param name="max">${wrist_limit_upper}</param></command_interface>
           <state_interface name="position"/>
           <state_interface name="velocity"/>
           <state_interface name="effort"/>

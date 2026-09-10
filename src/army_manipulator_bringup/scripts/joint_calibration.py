@@ -65,6 +65,10 @@ class JointCalibration:
     def zero_offset(self, joint_name: str) -> float:
         return float(self._joints.get(joint_name, {}).get("zero_offset", 0.0))
 
+    def has_joint(self, joint_name: str) -> bool:
+        """Return whether calibration data for ``joint_name`` was loaded."""
+        return joint_name in self._joints
+
     def raw_to_actual(self, joint_name: str, raw_angle: float) -> float:
         """actual_joint_angle = raw_encoder_angle - zero_offset"""
         return raw_angle - self.zero_offset(joint_name)

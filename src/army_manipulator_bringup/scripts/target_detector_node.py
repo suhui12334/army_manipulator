@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """타겟 검출 노드.
 
-dolbotZ(9o9hz/dolbotZ)의 arm_pickup_node와 동일한 패턴으로 맞춘 것 —
-army_manipulator가 나중에 dolbotZ/src/arm으로 합쳐질 예정이라, 토픽 이름/
-파라미터/입력 포맷(CompressedImage)/깊이 샘플링 방식을 처음부터 통일해둔다.
-
 입력: RealSense의 정렬된 color/depth 압축 이미지(CompressedImage,
 compressedDepth) + camera_info. CompressedImage를 쓰는 이유는 원격/저대역폭
 네트워크(무선 조종 등)에서도 raw Image보다 훨씬 가볍기 때문이다
@@ -188,10 +184,7 @@ class TargetDetectorNode(Node):
         self.declare_parameter("conf_threshold", 0.5)
         self.declare_parameter("infer_size", 320)
         self.declare_parameter("depth_roi_radius", 5)
-        # 팔의 집기 작업반경을 넘는 검출(예: 1.7 m)을 MoveIt에 보내면
-        # 계획은 반드시 실패한다. 모바일 베이스가 물자 근처로 접근한 뒤
-        # 검출하도록 기본 상한을 0.8 m로 둔다.
-        self.declare_parameter("max_depth_m", 0.8)
+        self.declare_parameter("max_depth_m", 2.0)
         self.declare_parameter("color_topic", "/camera/camera/color/image_raw/compressed")
         self.declare_parameter("depth_topic", "/camera/camera/aligned_depth_to_color/image_raw/compressedDepth")
         self.declare_parameter("camera_info_topic", "/camera/camera/color/camera_info")

@@ -14,7 +14,7 @@
   <xacro:macro name="army_manipulator_ros2_control2"
                params="prefix
                        use_mock_hardware:=true
-                       pinion_pitch_radius:=0.015
+                       pinion_pitch_radius:=0.017
                        dxl_port_name:=/dev/ttyUSB0
                        dxl_baud_rate:=57600
                        rmd_ifname:=can_arm
@@ -33,7 +33,7 @@
           <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
           <state_interface name="velocity"/>
         </joint>
-        <joint name="${prefix}shoulder_lift_joint">
+        <joint name="${prefix}shoulder_joint">
           <command_interface name="position"/>
           <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
           <state_interface name="velocity"/>
@@ -134,7 +134,7 @@
       </xacro:macro>
 
       <!-- RMD-X8-120 (CAN ID 4), RMD-X6-60 (ID 5), RMD-X4-36 (ID 6). -->
-      <xacro:rmd_actuator name="shoulder" joint="shoulder_lift_joint" actuator_id="4" max_velocity="1.047"/>
+      <xacro:rmd_actuator name="shoulder" joint="shoulder_joint" actuator_id="4" max_velocity="1.047"/>
       <xacro:rmd_actuator name="elbow" joint="elbow_joint" actuator_id="5" max_velocity="1.571"/>
       <xacro:rmd_actuator name="wrist" joint="wrist_joint" actuator_id="6" max_velocity="2.618"/>
     </xacro:unless>
